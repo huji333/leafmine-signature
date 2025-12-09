@@ -16,4 +16,4 @@ make setup
 make run
 ```
 
-3. Open http://0.0.0.0:7860 in a browser
+3. Open http://localhost:7860 in a browser
