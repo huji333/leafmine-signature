@@ -1,12 +1,10 @@
-FROM ghcr.io/astral-sh/uv:latest
+FROM ghcr.io/astral-sh/uv:python3.13-bookworm
 
 WORKDIR /app
 
-COPY pyproject.toml uv.lock .
+COPY pyproject.toml uv.lock README.md ./
+COPY views/ ./views/
+RUN ["uv", "sync", "--locked"]
 
-RUN uv sync
-
-COPY gradio-app/
-
-EXPOSE 7860:7860
-CMD ["uv", "run", "gradio-app/app.py"]
+EXPOSE 7860
+CMD ["uv", "run", "--frozen", "--no-sync", "gradio_app"]

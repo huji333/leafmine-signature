@@ -1,6 +1,6 @@
 # Architecture
 
-## gradio-app
+## views
 
 Web frontend of app created by gradio.
 

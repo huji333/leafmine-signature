@@ -10,4 +10,10 @@ An asset pipeline for calculating signature of curvilinear leaf mines.
 make setup
 ```
 
-2.
+2. Launch the Gradio interface
+
+```
+make run
+```
+
+3. Open http://0.0.0.0:7860 in a browser
