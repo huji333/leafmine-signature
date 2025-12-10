@@ -1,14 +1,23 @@
+from __future__ import annotations
+
+import os
+
 import gradio as gr
 
-
-def analyze_leaf_mine(image):
-    return "Hello, World!"
+from views.tabs import pipeline, skeletonization
 
 
-def main():
-    gr.Interface(fn=analyze_leaf_mine, inputs="image", outputs="text").launch(
-        server_name="0.0.0.0",  # allow access from outside the container
-        server_port=7860,
+def main() -> None:
+    with gr.Blocks() as demo:
+        with gr.Tabs():
+            with gr.Tab("Pipeline"):
+                pipeline.render()
+            with gr.Tab("Skeletonization"):
+                skeletonization.render()
+
+    demo.launch(
+        server_name=os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),
+        server_port=int(os.getenv("GRADIO_SERVER_PORT", "7860")),
     )
 
 

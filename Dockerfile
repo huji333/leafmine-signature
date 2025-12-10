@@ -4,6 +4,9 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY views/ ./views/
+COPY models/ ./models/
+COPY data/ ./data/
+
 RUN ["uv", "sync", "--locked"]
 
 EXPOSE 7860
