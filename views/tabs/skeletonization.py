@@ -5,7 +5,6 @@ from pathlib import Path
 
 import gradio as gr
 from PIL import Image
-from gradio.data_classes import FileData
 
 from models.skeletonization import run_skeletonization
 
@@ -27,23 +26,21 @@ def render() -> None:
         file_types=["image"],
         file_count="single",
     )
-    run_button = gr.Button("Save & Skeletonize", variant="primary")
+    run_button = gr.Button("Skeletonize", variant="primary")
 
     with gr.Row():
         segmented_preview = gr.Image(label="Stored Mask Preview")
         skeleton_preview = gr.Image(label="Skeleton Preview")
 
-    path_info = gr.JSON(label="Saved Paths", value={})
-
     run_button.click(
         fn=_handle_skeletonization,
         inputs=segmented_input,
-        outputs=[segmented_preview, skeleton_preview, path_info],
+        outputs=[segmented_preview, skeleton_preview],
         show_progress=True,
     )
 
 
-def _handle_skeletonization(file_data: FileData | None):
+def _handle_skeletonization(file_data: str | None):
     """Gradio callback to persist inputs, run skeletonize, and persist outputs."""
 
     if file_data is None:
@@ -51,35 +48,28 @@ def _handle_skeletonization(file_data: FileData | None):
 
     _ensure_directories()
 
-    file_path_str = getattr(file_data, "path", None) or getattr(file_data, "name", None)
-    if not file_path_str:
-        raise gr.Error("Unable to read the uploaded file.")
-
-    file_path = Path(file_path_str)
-    upload_name = getattr(file_data, "orig_name", None) or file_path.name
+    file_path = Path(file_data)
+    upload_name = file_path.name
 
     with Image.open(file_path) as uploaded_image:
         segmented_image = uploaded_image.convert("L")
-    segmented_path = _save_image(
+    _save_image(
         segmented_image,
         SEGMENTED_DIR,
         prefix="segmented",
         original_name=upload_name,
     )
 
-    result = run_skeletonization(segmented_path)
+    result = run_skeletonization(segmented_image)
     skeleton_image: Image.Image = result["skeleton_mask"]
-    skeleton_path = _save_image(
+    _save_image(
         skeleton_image,
         SKELETONIZED_DIR,
         prefix="skeleton",
         original_name=upload_name,
     )
 
-    return segmented_image, skeleton_image, {
-        "segmented_path": str(segmented_path),
-        "skeleton_path": str(skeleton_path),
-    }
+    return segmented_image, skeleton_image
 
 
 def _ensure_directories() -> None:

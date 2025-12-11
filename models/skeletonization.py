@@ -10,7 +10,6 @@ follow-up modules once this foundation works end-to-end.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Dict
 
 import numpy as np
 from PIL import Image
@@ -23,12 +22,12 @@ except ImportError as exc:  # pragma: no cover - dependency guard
     ) from exc
 
 
-def run_skeletonization(image_path: str | Path) -> Dict[str, Image.Image]:
+def run_skeletonization(mask: Image.Image | str | Path) -> dict[str, Image.Image]:
     """
     Load a binary mask, skeletonize it, and return image-friendly artifacts.
 
     Args:
-        image_path: path to the PNG mask (white mine, black background).
+        mask: a Pillow image or path to the PNG mask (white mine, black background).
 
     Returns:
         A dictionary containing:
@@ -36,7 +35,7 @@ def run_skeletonization(image_path: str | Path) -> Dict[str, Image.Image]:
             - ``skeleton_mask``: the skeletonized mask rendered as a Pillow image.
     """
 
-    mask_bool = _load_binary_mask(image_path)
+    mask_bool = _load_binary_mask(mask)
     skeleton_bool = skeletonize(mask_bool)
 
     return {
@@ -45,19 +44,22 @@ def run_skeletonization(image_path: str | Path) -> Dict[str, Image.Image]:
     }
 
 
-def _load_binary_mask(image_path: str | Path) -> np.ndarray:
-    """Load a PNG mask into a boolean numpy array."""
+def _load_binary_mask(source: Image.Image | str | Path) -> np.ndarray:
+    """Load a mask (file path or Pillow image) into a boolean numpy array."""
 
-    with Image.open(image_path) as image:
-        array = np.asarray(image.convert("L"))
-    return array > 0
+    if not isinstance(source, Image.Image):
+        with Image.open(source) as opened:
+            source = opened.convert("L")
+    if source.mode != "L":
+        source = source.convert("L")
+
+    return np.asarray(source) > 0
 
 
 def _to_image(mask: np.ndarray) -> Image.Image:
     """Convert a boolean mask into a Pillow grayscale image."""
 
-    array = np.uint8(mask) * 255
-    return Image.fromarray(array, mode="L")
+    return Image.fromarray(np.uint8(mask) * 255, mode="L")
 
 
 __all__ = ["run_skeletonization"]
