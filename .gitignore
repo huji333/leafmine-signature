@@ -11,3 +11,8 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Data files
+data/
+*.jpg
+*.png

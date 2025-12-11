@@ -4,6 +4,10 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock README.md ./
 COPY views/ ./views/
+COPY models/ ./models/
+
+RUN mkdir -p data/segmented data/skeletonized
+
 RUN ["uv", "sync", "--locked"]
 
 EXPOSE 7860
