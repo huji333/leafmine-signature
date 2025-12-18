@@ -1,11 +1,15 @@
-# Architecture
+# Overview on this project
 
-## views
+## Architecture
+
+### views
 
 Web frontend of app created by gradio.
 
-## models
+### models
 
 Backend logics used in the views
 
-## data
+### data
+
+Split by steps

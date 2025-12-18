@@ -4,7 +4,7 @@ import os
 
 import gradio as gr
 
-from views.tabs import pipeline, skeletonization
+from views.tabs import line_extension, pipeline, skeletonization
 
 
 def main() -> None:
@@ -14,6 +14,8 @@ def main() -> None:
                 pipeline.render()
             with gr.Tab("Skeletonization"):
                 skeletonization.render()
+            with gr.Tab("Line Extension"):
+                line_extension.render()
 
     demo.launch(
         server_name=os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),
