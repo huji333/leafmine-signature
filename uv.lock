@@ -368,6 +368,15 @@ wheels = [
 ]
 
 [[package]]
+name = "iisignature"
+version = "0.24"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/5e/ee/f94dd13bfec5c6f2871f40a0eda9102a3e03fe914140e0ce204ad2d75c38/iisignature-0.24.tar.gz", hash = "sha256:0b9314c6e8b80487faf323191fb35986ad4226e86b0c67cf0a3b2939b695b9c6", size = 1253992, upload-time = "2019-12-01T15:26:49.83Z" }
+
+[[package]]
 name = "imageio"
 version = "2.37.2"
 source = { registry = "https://pypi.org/simple" }
@@ -410,6 +419,7 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "gradio" },
+    { name = "iisignature" },
     { name = "numpy" },
     { name = "pillow" },
     { name = "scikit-image" },
@@ -418,6 +428,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "gradio", specifier = ">=5.49.1" },
+    { name = "iisignature", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pillow", specifier = ">=10.4.0" },
     { name = "scikit-image", specifier = ">=0.24.0" },
