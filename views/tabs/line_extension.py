@@ -36,21 +36,13 @@ def render() -> None:
         label="Compute and append signatures (forward + reverse)",
         value=True,
     )
-    with gr.Accordion("Signature Options", open=False):
-        num_samples_slider = gr.Slider(
-            label="Resampled points (N)",
-            minimum=64,
-            maximum=512,
-            step=32,
-            value=256,
-        )
-        depth_slider = gr.Slider(
-            label="Signature depth",
-            minimum=2,
-            maximum=6,
-            step=1,
-            value=4,
-        )
+    num_samples_input = gr.Number(
+        label="Resampled points (N)",
+        value=256,
+        minimum=32,
+        maximum=4096,
+        step=1,
+    )
 
     with gr.Row():
         highlight_preview = gr.Image(label="Longest Path Preview")
@@ -66,7 +58,7 @@ def render() -> None:
 
     run_button.click(
         fn=_handle_longest_path,
-        inputs=[filename_input, signature_checkbox, num_samples_slider, depth_slider],
+        inputs=[filename_input, signature_checkbox, num_samples_input],
         outputs=[highlight_preview, polyline_preview, signature_preview, signature_status],
         show_progress=True,
     )
@@ -75,8 +67,7 @@ def render() -> None:
 def _handle_longest_path(
     filename: str | None,
     compute_signature: bool,
-    num_samples: int,
-    depth: int,
+    num_samples: float,
 ):
     if not filename:
         raise gr.Error("Enter the skeleton filename first.")
@@ -100,7 +91,7 @@ def _handle_longest_path(
     signature_message = ""
     if compute_signature:
         signature_data, signature_message = _compute_signatures(
-            artifacts["polyline"], num_samples, depth
+            artifacts["polyline"], int(num_samples), depth=4
         )
     else:
         signature_message = "Signature computation skipped for this run."
