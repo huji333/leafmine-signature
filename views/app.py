@@ -10,7 +10,7 @@ from views.tabs import line_extension, pipeline, skeletonization
 def main() -> None:
     with gr.Blocks() as demo:
         with gr.Tabs():
-            with gr.Tab("Pipeline"):
+            with gr.Tab("From Binary Mask"):
                 pipeline.render()
             with gr.Tab("Skeletonization"):
                 skeletonization.render()

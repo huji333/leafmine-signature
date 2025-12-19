@@ -12,6 +12,7 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock README.md ./
 COPY views/ ./views/
 COPY models/ ./models/
+COPY controllers/ ./controllers/
 
 RUN mkdir -p data/segmented data/skeletonized
 

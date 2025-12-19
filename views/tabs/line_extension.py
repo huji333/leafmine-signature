@@ -5,17 +5,24 @@ import os
 from pathlib import Path
 
 import gradio as gr
-from PIL import Image
 
-from models.longest_component import export_longest_path
-from models.signature import signature_from_json, write_signature_csv
+from controllers.line_extension import (
+    LineExtensionConfig,
+    run_longest_path_flow,
+)
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
 SKELETONIZED_DIR = DATA_DIR / "skeletonized"
 TMP_DIR = DATA_DIR / "tmp"
 SIGNATURES_DIR = DATA_DIR / "signatures"
 SIGNATURES_CSV = SIGNATURES_DIR / "signatures.csv"
-SIGNATURE_DIRECTIONS: tuple[str, ...] = ("forward", "reverse")
+
+LINE_EXTENSION_CONFIG = LineExtensionConfig(
+    skeleton_dir=SKELETONIZED_DIR,
+    polyline_dir=TMP_DIR,
+    signatures_dir=SIGNATURES_DIR,
+    signature_csv=SIGNATURES_CSV,
+)
 
 
 def render() -> None:
@@ -72,74 +79,25 @@ def _handle_longest_path(
     if not filename:
         raise gr.Error("Enter the skeleton filename first.")
 
-    _ensure_directories()
-
-    candidate = Path(filename)
-    if not candidate.is_absolute():
-        candidate = SKELETONIZED_DIR / candidate.name
-
-    if not candidate.exists():
-        raise gr.Error(f"Could not find {candidate} (did you skeletonize first?).")
-
-    artifacts = export_longest_path(candidate, TMP_DIR)
-
-    with Image.open(artifacts["highlight"]) as highlight_image:
-        preview = highlight_image.copy()
-
-    payload = json.loads(artifacts["polyline"].read_text())
-    signature_data: list[dict[str, object]] | None = None
-    signature_message = ""
-    if compute_signature:
-        signature_data, signature_message = _compute_signatures(
-            artifacts["polyline"], int(num_samples), depth=4
+    try:
+        result = run_longest_path_flow(
+            filename,
+            compute_signature=compute_signature,
+            num_samples=int(num_samples),
+            depth=4,
+            config=LINE_EXTENSION_CONFIG,
         )
-    else:
-        signature_message = "Signature computation skipped for this run."
+    except FileNotFoundError as exc:
+        raise gr.Error(str(exc)) from exc
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
 
-    return preview, payload, signature_data, signature_message
-
-
-def _compute_signatures(
-    polyline_path: Path, num_samples: int, depth: int
-) -> tuple[list[dict[str, object]], str]:
-    results = []
-    csv_path: Path | None = None
-    for direction in SIGNATURE_DIRECTIONS:
-        result = signature_from_json(
-            polyline_path,
-            num_samples=num_samples,
-            depth=depth,
-            direction=direction,
-        )
-        csv_path = write_signature_csv(result, SIGNATURES_CSV)
-        results.append(result)
-
-    assert csv_path is not None
-    summary = [
-        {
-            "direction": result.direction,
-            "depth": result.depth,
-            "num_samples": result.num_samples,
-            "signature_dim": result.dimension,
-            "path_points": result.path_points,
-            "path_length": round(result.path_length, 3),
-            "start_xy": [round(result.start_xy[0], 3), round(result.start_xy[1], 3)],
-            "end_xy": [round(result.end_xy[0], 3), round(result.end_xy[1], 3)],
-            "csv_path": str(csv_path),
-        }
-        for result in results
-    ]
-    message = (
-        f"Appended {len(results)} signature rows to {csv_path}. "
-        "Both directions are included."
+    return (
+        result.highlight_image,
+        result.polyline_payload,
+        result.signature_summary,
+        result.signature_message,
     )
-    return summary, message
-
-
-def _ensure_directories() -> None:
-    TMP_DIR.mkdir(parents=True, exist_ok=True)
-    SKELETONIZED_DIR.mkdir(parents=True, exist_ok=True)
-    SIGNATURES_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _example_file_list(limit: int = 6) -> list[str]:
