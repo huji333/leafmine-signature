@@ -14,6 +14,10 @@ Backend logics used in the views
 
 Split by steps
 
+### controllers
+
+Thin orchestration layer that keeps filesystem + pipeline logic outside the Gradio tabs. `controllers/pipeline.py` exposes `process_segmented_mask` plus the batch CLI (`python -m controllers.pipeline`), while `controllers/line_extension.py` powers the Line Extension tab by wrapping longest-path + signature helpers.
+
 ## Operational Notes
 
 - `make setup` builds the Docker image with all Python deps (iisignature included) and `make run` launches the Gradio management UI on port 7860. Bind `DATA_DIR=/abs/path` (or `LEAFMINE_DATA_DIR`) if the default `./data` mount should live elsewhere.
