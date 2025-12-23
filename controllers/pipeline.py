@@ -12,7 +12,7 @@ import sys
 from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
-from typing import Protocol, Sequence
+from typing import Callable, Sequence
 
 from PIL import Image
 
@@ -84,9 +84,6 @@ class PipelineUIResult:
     highlight_image: Image.Image
     signature_summary: list[dict[str, object]]
     status_message: str
-
-
-# TODO:class Segmenter(Protocol):
 
 
 def process_segmented_mask(
@@ -256,7 +253,7 @@ def run_pipeline_for_ui(
 
 def process_with_segmenter(
     image: Image.Image | str | Path,
-    segmenter: Segmenter,
+    segmenter: Callable[[Image.Image], Image.Image],
     *,
     base_name: str | None = None,
     config: PipelineConfig | None = None,
@@ -492,7 +489,6 @@ __all__ = [
     "PipelineConfig",
     "PipelineResult",
     "PipelineUIResult",
-    "Segmenter",
     "process_segmented_mask",
     "process_with_segmenter",
     "run_pipeline_for_ui",
