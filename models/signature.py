@@ -34,7 +34,6 @@ class SignatureResult:
     path_points: int
     path_length: float
     start_xy: tuple[float, float]
-    end_xy: tuple[float, float]
 
     @property
     def dimension(self) -> int:
@@ -54,7 +53,6 @@ def signature_from_json(
     resampled, path_length = _resample_polyline(points, num_samples)
     ordered = resampled if direction == "forward" else resampled[::-1]
     start_xy = tuple(map(float, ordered[0]))
-    end_xy = tuple(map(float, ordered[-1]))
     centered = ordered - ordered[0]
     signature = _compute_signature(centered, depth)
     return SignatureResult(
@@ -66,7 +64,6 @@ def signature_from_json(
         path_points=int(points.shape[0]),
         path_length=path_length,
         start_xy=start_xy,
-        end_xy=end_xy,
     )
 
 
@@ -78,14 +75,11 @@ def write_signature_csv(result: SignatureResult, output_path: Path) -> Path:
         "polyline",
         "depth",
         "num_samples",
-        "direction",
         "signature_dim",
         "path_points",
         "path_length",
         "start_x",
         "start_y",
-        "end_x",
-        "end_y",
     ] + [f"sig_{i}" for i in range(result.dimension)]
 
     write_header = not output_path.exists()
@@ -97,14 +91,11 @@ def write_signature_csv(result: SignatureResult, output_path: Path) -> Path:
             str(result.source),
             result.depth,
             result.num_samples,
-            result.direction,
             result.dimension,
             result.path_points,
             f"{result.path_length:.3f}",
             f"{result.start_xy[0]:.3f}",
             f"{result.start_xy[1]:.3f}",
-            f"{result.end_xy[0]:.3f}",
-            f"{result.end_xy[1]:.3f}",
         ] + [f"{value:.10f}" for value in result.signature]
         writer.writerow(row)
     return output_path

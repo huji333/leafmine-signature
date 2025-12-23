@@ -4,8 +4,7 @@ import os
 from pathlib import Path
 
 import gradio as gr
-from PIL import Image
-from controllers.pipeline import PipelineConfig, process_segmented_mask
+from controllers.pipeline import PipelineConfig, run_pipeline_for_ui
 from models.signature import DIRECTION_CHOICES
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
@@ -84,56 +83,20 @@ def _run_pipeline(
     depth: float,
     directions: list[str] | None,
 ):
-    if mask_file is None:
-        raise gr.Error("Upload a segmented mask first.")
-
-    base = base_name.strip() or None
-    selected_dirs = [d for d in (directions or []) if d in DIRECTION_CHOICES]
-    if not selected_dirs:
-        raise gr.Error("Select at least one signature direction.")
-
+    """Gradio callback that delegates to the controller layer."""
     try:
-        result = process_segmented_mask(
+        result = run_pipeline_for_ui(
             mask_file,
-            base_name=base,
+            base_name=base_name,
+            num_samples=num_samples,
+            depth=depth,
+            directions=directions,
             config=PIPELINE_CONFIG,
-            num_samples=int(num_samples),
-            depth=int(depth),
-            direction=DIRECTION_CHOICES[0],
-            directions=selected_dirs,
         )
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
-    with Image.open(result.highlight_path) as highlight_image:
-        overlay = highlight_image.copy()
-
-    signature_summary = [
-        {
-            "direction": signature.direction,
-            "depth": signature.depth,
-            "num_samples": signature.num_samples,
-            "signature_dim": signature.dimension,
-            "path_points": signature.path_points,
-            "path_length": round(signature.path_length, 3),
-            "start_xy": [round(signature.start_xy[0], 3), round(signature.start_xy[1], 3)],
-            "end_xy": [round(signature.end_xy[0], 3), round(signature.end_xy[1], 3)],
-            "csv_path": str(result.signature_csv_path),
-            "polyline_json": str(result.polyline_path),
-            "highlight_png": str(result.highlight_path),
-            "skeleton_png": str(result.skeleton_path),
-            "mask_png": str(result.mask_path),
-        }
-        for signature in result.signature_results
-    ]
-
-    status = (
-        f"Saved mask `{result.mask_path.name}` → skeleton `{result.skeleton_path.name}` "
-        f"→ signature CSV `{result.signature_csv_path.name}` "
-        f"({len(result.signature_results)} direction(s))."
-    )
-
-    return overlay, signature_summary, status
+    return result.highlight_image, result.signature_summary, result.status_message
 
 
 __all__ = ["render"]

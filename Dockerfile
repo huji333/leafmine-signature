@@ -14,8 +14,6 @@ COPY views/ ./views/
 COPY models/ ./models/
 COPY controllers/ ./controllers/
 
-RUN mkdir -p data/segmented data/skeletonized
-
 RUN ["uv", "sync", "--locked"]
 
 EXPOSE 7860

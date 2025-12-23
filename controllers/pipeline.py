@@ -1,11 +1,7 @@
 """Segmentation->signature orchestration helpers.
 
-This module keeps the end-to-end pipeline (segmented mask -> skeleton ->
-longest path -> signature) out of the UI layer so both Gradio tabs and
-batch/CLI tooling can reuse the exact same logic. Today we assume the
-caller already produced a binary mask (e.g., manual tracing), but the
-functions are structured so a future ML segmenter can plug in ahead of
-`process_segmented_mask` without touching the downstream flow.
+This module implements the end-to-end pipeline (segmented mask -> skeleton ->
+longest path -> signature.
 """
 
 from __future__ import annotations
@@ -15,7 +11,6 @@ import os
 import sys
 from dataclasses import dataclass, replace
 from datetime import datetime
-import re
 from pathlib import Path
 from typing import Protocol, Sequence
 
@@ -82,11 +77,16 @@ class PipelineResult:
         return self.signature_results[0]
 
 
-class Segmenter(Protocol):
-    """Callable interface for future ML segmentation models."""
+@dataclass(slots=True)
+class PipelineUIResult:
+    """UI-friendly result format for Gradio tabs."""
 
-    def __call__(self, image: Image.Image) -> Image.Image:  # pragma: no cover - protocol
-        ...
+    highlight_image: Image.Image
+    signature_summary: list[dict[str, object]]
+    status_message: str
+
+
+# TODO:class Segmenter(Protocol):
 
 
 def process_segmented_mask(
@@ -122,13 +122,11 @@ def process_segmented_mask(
     cfg = config or PipelineConfig()
     cfg.ensure_directories()
 
-    normalized_name = _ensure_mask_prefix(_resolve_base_name(segmented_mask, base_name))
-    mask_image = _load_image(segmented_mask, mode="L")
-    mask_path = cfg.segmented_dir / f"{normalized_name}.png"
-    mask_image.save(mask_path)
+    mask_path, original_base = _resolve_mask_artifact(segmented_mask, cfg, base_name)
 
     skeleton_artifacts = run_skeletonization(mask_path)
-    skeleton_path = cfg.skeleton_dir / f"{normalized_name}_skeleton.png"
+    skeleton_stem = _ensure_prefix("skeleton_", original_base)
+    skeleton_path = cfg.skeleton_dir / f"{skeleton_stem}.png"
     skeleton_artifacts["skeleton_mask"].save(skeleton_path)
 
     longest = export_longest_path(skeleton_path, cfg.polyline_dir)
@@ -166,6 +164,96 @@ def process_segmented_mask(
     )
 
 
+def run_pipeline_for_ui(
+    mask_file: str | Path,
+    *,
+    base_name: str | None = None,
+    num_samples: float | int,
+    depth: float | int,
+    directions: Sequence[str] | None = None,
+    config: PipelineConfig | None = None,
+) -> PipelineUIResult:
+    """Run the pipeline with UI-friendly input validation and output formatting.
+
+    This function validates inputs, converts types, runs the pipeline, and formats
+    results for Gradio UI consumption. It keeps UI-specific logic out of the views layer.
+
+    Args:
+        mask_file: Path to the segmented mask file.
+        base_name: Optional override for artifact filenames.
+        num_samples: Resampling count (will be converted to int).
+        depth: Signature depth (will be converted to int).
+        directions: List of direction strings to compute signatures for.
+        config: Optional pipeline configuration.
+
+    Returns:
+        PipelineUIResult with formatted image, signature summary, and status message.
+
+    Raises:
+        ValueError: If inputs are invalid (mask_file is None, directions are empty,
+            or num_samples/depth cannot be converted to integers).
+    """
+    if mask_file is None:
+        raise ValueError("Upload a segmented mask first.")
+
+    base = base_name.strip() if base_name else None
+    selected_dirs = [d for d in (directions or []) if d in DIRECTION_CHOICES]
+    if not selected_dirs:
+        raise ValueError("Select at least one signature direction.")
+
+    if num_samples is None or depth is None:
+        raise ValueError("Enter numeric values for samples and depth.")
+
+    try:
+        samples = int(num_samples)
+        depth_value = int(depth)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Samples and depth must be integers.") from exc
+
+    result = process_segmented_mask(
+        mask_file,
+        base_name=base,
+        config=config,
+        num_samples=samples,
+        depth=depth_value,
+        direction=DIRECTION_CHOICES[0],
+        directions=selected_dirs,
+    )
+
+    with Image.open(result.highlight_path) as highlight_image:
+        overlay = highlight_image.copy()
+
+    signature_summary = [
+        {
+            "direction": signature.direction,
+            "depth": signature.depth,
+            "num_samples": signature.num_samples,
+            "signature_dim": signature.dimension,
+            "path_points": signature.path_points,
+            "path_length": round(signature.path_length, 3),
+            "start_xy": [round(signature.start_xy[0], 3), round(signature.start_xy[1], 3)],
+            "csv_path": str(result.signature_csv_path),
+            "polyline_json": str(result.polyline_path),
+            "highlight_png": str(result.highlight_path),
+            "skeleton_png": str(result.skeleton_path),
+            "mask_png": str(result.mask_path),
+        }
+        for signature in result.signature_results
+    ]
+
+    status = (
+        f"Saved mask `{result.mask_path.name}` → skeleton `{result.skeleton_path.name}` "
+        f"→ signature CSV `{result.signature_csv_path.name}` "
+        f"({len(result.signature_results)} direction(s))."
+    )
+
+    return PipelineUIResult(
+        highlight_image=overlay,
+        signature_summary=signature_summary,
+        status_message=status,
+    )
+
+
 def process_with_segmenter(
     image: Image.Image | str | Path,
     segmenter: Segmenter,
@@ -184,15 +272,25 @@ def process_with_segmenter(
     the mask before delegating to :func:`process_segmented_mask`.
     """
 
+    cfg = config or PipelineConfig()
+    cfg.ensure_directories()
+
     rgb_image = _load_image(image).convert("RGB")
     mask_image = segmenter(rgb_image)
     if not isinstance(mask_image, Image.Image):
         raise TypeError("segmenter must return a Pillow Image")
 
-    return process_segmented_mask(
+    mask_path = _save_mask_image(
         mask_image,
-        base_name=base_name or _resolve_base_name(image, None),
-        config=config,
+        cfg=cfg,
+        source=image,
+        override=base_name,
+    )
+
+    return process_segmented_mask(
+        mask_path,
+        base_name=base_name,
+        config=cfg,
         num_samples=num_samples,
         depth=depth,
         direction=direction,
@@ -200,34 +298,86 @@ def process_with_segmenter(
     )
 
 
-_SLUG_PATTERN = re.compile(r"[^A-Za-z0-9_.-]+")
+_KNOWN_PREFIXES = ("mask_", "segmented_", "skeleton_", "skeletonized_")
 
 
-def _ensure_mask_prefix(base_name: str) -> str:
-    if not base_name:
-        return "mask"
-    return base_name if base_name.startswith("mask_") else f"mask_{base_name}"
+def _resolve_mask_artifact(
+    segmented_mask: Image.Image | str | Path,
+    cfg: PipelineConfig,
+    base_name: str | None,
+) -> tuple[Path, str]:
+    if isinstance(segmented_mask, Image.Image):
+        raise ValueError("Provide a saved mask path when calling process_segmented_mask")
+
+    source_path = Path(segmented_mask)
+    if not source_path.exists():
+        raise FileNotFoundError(f"Mask source {source_path} does not exist")
+    resolved = source_path.resolve()
+    segmented_root = cfg.segmented_dir.resolve()
+    try:
+        resolved.relative_to(segmented_root)
+    except ValueError:
+        mask_image = _load_image(source_path, mode="L")
+        copied = _save_mask_image(
+            mask_image,
+            cfg=cfg,
+            source=source_path,
+            override=base_name,
+        )
+        base = _derive_base_name(copied, None)
+        return copied, base
+
+    base = _derive_base_name(source_path, base_name)
+    return source_path, base
 
 
-def _resolve_base_name(source: object, override: str | None) -> str:
+def _derive_base_name(source: object | None, override: str | None) -> str:
     if override:
-        slug = _slugify(override)
-        if slug:
-            return slug
-        raise ValueError("base_name must contain at least one alphanumeric character")
+        cleaned = Path(str(override)).stem.strip()
+        if cleaned:
+            return _strip_prefix(cleaned)
+        raise ValueError("base_name must contain at least one visible character")
 
     if isinstance(source, (str, Path)):
-        slug = _slugify(Path(source).stem)
-        if slug:
-            return slug
+        stem = Path(source).stem.strip()
+        if stem:
+            stripped = _strip_prefix(stem)
+            if stripped:
+                return stripped
 
-    timestamp = datetime.now().strftime("mask_%Y%m%d-%H%M%S")
-    return timestamp
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def _ensure_prefix(prefix: str, base: str) -> str:
+    if base.startswith(prefix):
+        return base
+    return f"{prefix}{base}"
+
+
+def _strip_prefix(value: str) -> str:
+    for prefix in _KNOWN_PREFIXES:
+        if value.startswith(prefix) and len(value) > len(prefix):
+            return value[len(prefix) :]
+    return value
 
 
 def _slugify(candidate: str) -> str:
-    slug = _SLUG_PATTERN.sub("_", candidate).strip("._-")
-    return slug
+    return candidate.replace(" ", "_").strip(" ._")
+
+
+def _save_mask_image(
+    mask_image: Image.Image,
+    *,
+    cfg: PipelineConfig,
+    source: object | None,
+    override: str | None,
+) -> Path:
+    base = _derive_base_name(source, override)
+    mask_stem = _ensure_prefix("mask_", base)
+    destination = cfg.segmented_dir / f"{mask_stem}.png"
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    mask_image.convert("L").save(destination)
+    return destination
 
 
 def _load_image(source: Image.Image | str | Path, *, mode: str | None = None) -> Image.Image:
@@ -303,7 +453,7 @@ def _cli(argv: Sequence[str] | None = None) -> int:
 
     if not mask_paths:
         print(f"No PNG masks found under {segmented_dir}", file=sys.stderr)
-        return 1
+        return 0
 
     cfg = PipelineConfig(
         segmented_dir=segmented_dir,
@@ -341,9 +491,11 @@ def _cli(argv: Sequence[str] | None = None) -> int:
 __all__ = [
     "PipelineConfig",
     "PipelineResult",
+    "PipelineUIResult",
     "Segmenter",
     "process_segmented_mask",
     "process_with_segmenter",
+    "run_pipeline_for_ui",
 ]
 
 

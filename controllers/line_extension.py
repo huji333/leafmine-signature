@@ -109,7 +109,6 @@ def run_longest_path_flow(
                 "path_points": result.path_points,
                 "path_length": round(result.path_length, 3),
                 "start_xy": [round(result.start_xy[0], 3), round(result.start_xy[1], 3)],
-                "end_xy": [round(result.end_xy[0], 3), round(result.end_xy[1], 3)],
                 "csv_path": str(csv_path) if csv_path else str(cfg.signature_csv),
             }
             for result in signature_results
