@@ -24,7 +24,7 @@ from models.signature import (
     signature_from_json,
     write_signature_csv,
 )
-from models.skeletonization import run_skeletonization
+from models.skeletonization import SkeletonizationConfig, run_skeletonization
 
 
 @dataclass(slots=True)
@@ -91,6 +91,7 @@ def process_segmented_mask(
     *,
     base_name: str | None = None,
     config: PipelineConfig | None = None,
+    skeleton_config: SkeletonizationConfig | None = None,
     num_samples: int = 256,
     depth: int = 4,
     direction: Direction = "forward",
@@ -106,6 +107,8 @@ def process_segmented_mask(
             mask is an in-memory image.
         config: Optional :class:`PipelineConfig` that controls output
             folders. The defaults match the repo's ``data/*`` layout.
+        skeleton_config: Optional :class:`SkeletonizationConfig` that tunes
+            mask cleanup before skeletonization.
         num_samples: Resampling count before signature calculation.
         depth: Truncation depth for the path signature.
         direction: Whether the signature should follow the forward or
@@ -118,10 +121,11 @@ def process_segmented_mask(
 
     cfg = config or PipelineConfig()
     cfg.ensure_directories()
+    skel_cfg = skeleton_config or DEFAULT_SKELETON_CONFIG
 
     mask_path, original_base = _resolve_mask_artifact(segmented_mask, cfg, base_name)
 
-    skeleton_artifacts = run_skeletonization(mask_path)
+    skeleton_artifacts = run_skeletonization(mask_path, config=skel_cfg)
     skeleton_stem = _ensure_prefix("skeleton_", original_base)
     skeleton_path = cfg.skeleton_dir / f"{skeleton_stem}.png"
     skeleton_artifacts["skeleton_mask"].save(skeleton_path)
@@ -169,6 +173,7 @@ def run_pipeline_for_ui(
     depth: float | int,
     directions: Sequence[str] | None = None,
     config: PipelineConfig | None = None,
+    skeleton_config: SkeletonizationConfig | None = None,
 ) -> PipelineUIResult:
     """Run the pipeline with UI-friendly input validation and output formatting.
 
@@ -182,6 +187,7 @@ def run_pipeline_for_ui(
         depth: Signature depth (will be converted to int).
         directions: List of direction strings to compute signatures for.
         config: Optional pipeline configuration.
+        skeleton_config: Optional skeletonization config passed through to the models layer.
 
     Returns:
         PipelineUIResult with formatted image, signature summary, and status message.
@@ -211,6 +217,7 @@ def run_pipeline_for_ui(
         mask_file,
         base_name=base,
         config=config,
+        skeleton_config=skeleton_config,
         num_samples=samples,
         depth=depth_value,
         direction=DIRECTION_CHOICES[0],
@@ -257,6 +264,7 @@ def process_with_segmenter(
     *,
     base_name: str | None = None,
     config: PipelineConfig | None = None,
+    skeleton_config: SkeletonizationConfig | None = None,
     num_samples: int = 256,
     depth: int = 4,
     direction: Direction = "forward",
@@ -288,6 +296,7 @@ def process_with_segmenter(
         mask_path,
         base_name=base_name,
         config=cfg,
+        skeleton_config=skeleton_config,
         num_samples=num_samples,
         depth=depth,
         direction=direction,
@@ -460,6 +469,13 @@ def _cli(argv: Sequence[str] | None = None) -> int:
         signature_csv=data_dir / "signatures" / "signatures.csv",
     ).with_timestamped_signature_csv(prefix=args.csv_prefix)
 
+    skeleton_cfg = SkeletonizationConfig(
+        white_threshold=args.skeleton_white_threshold,
+        smooth_radius=args.skeleton_smooth_radius,
+        hole_area_threshold=args.skeleton_hole_area,
+        erode_radius=args.skeleton_erode_radius,
+    )
+
     total = len(mask_paths)
     last_csv: Path | None = None
 
@@ -468,6 +484,7 @@ def _cli(argv: Sequence[str] | None = None) -> int:
             result = process_segmented_mask(
                 mask_path,
                 config=cfg,
+                skeleton_config=skeleton_cfg,
                 num_samples=args.num_samples,
                 depth=args.depth,
                 direction=args.directions[0],
@@ -497,3 +514,29 @@ __all__ = [
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(_cli())
+DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
+
+    parser.add_argument(
+        "--skeleton-white-threshold",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.white_threshold,
+        help="RGB cutoff (0-255) for mask foreground pixels before skeletonization (default: 200).",
+    )
+    parser.add_argument(
+        "--skeleton-smooth-radius",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.smooth_radius,
+        help="Radius of the closing structuring element before skeletonization (default: 3).",
+    )
+    parser.add_argument(
+        "--skeleton-hole-area",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
+        help="Maximum hole area (px^2) to fill inside the mask before skeletonization (default: 100).",
+    )
+    parser.add_argument(
+        "--skeleton-erode-radius",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.erode_radius,
+        help="Erosion radius applied before closing to separate touching regions (default: 4).",
+    )
