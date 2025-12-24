@@ -27,6 +27,9 @@ from models.signature import (
 from models.skeletonization import SkeletonizationConfig, run_skeletonization
 
 
+DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
+
+
 @dataclass(slots=True)
 class PipelineConfig:
     """File-system destinations for every stage of the pipeline."""
@@ -446,6 +449,30 @@ def _cli(argv: Sequence[str] | None = None) -> int:
         default=None,
         help="Optionally cap how many masks to process from the segmented directory.",
     )
+    parser.add_argument(
+        "--skeleton-white-threshold",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.white_threshold,
+        help="RGB cutoff (0-255) for mask foreground pixels before skeletonization (default: 200).",
+    )
+    parser.add_argument(
+        "--skeleton-smooth-radius",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.smooth_radius,
+        help="Radius of the closing structuring element before skeletonization (default: 3).",
+    )
+    parser.add_argument(
+        "--skeleton-hole-area",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
+        help="Maximum hole area (px^2) to fill inside the mask before skeletonization (default: 100).",
+    )
+    parser.add_argument(
+        "--skeleton-erode-radius",
+        type=int,
+        default=DEFAULT_SKELETON_CONFIG.erode_radius,
+        help="Erosion radius applied before closing to separate touching regions (default: 4).",
+    )
     args = parser.parse_args(argv)
 
     data_dir = args.data_dir.expanduser()
@@ -514,29 +541,3 @@ __all__ = [
 
 if __name__ == "__main__":  # pragma: no cover
     raise SystemExit(_cli())
-DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
-
-    parser.add_argument(
-        "--skeleton-white-threshold",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.white_threshold,
-        help="RGB cutoff (0-255) for mask foreground pixels before skeletonization (default: 200).",
-    )
-    parser.add_argument(
-        "--skeleton-smooth-radius",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.smooth_radius,
-        help="Radius of the closing structuring element before skeletonization (default: 3).",
-    )
-    parser.add_argument(
-        "--skeleton-hole-area",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
-        help="Maximum hole area (px^2) to fill inside the mask before skeletonization (default: 100).",
-    )
-    parser.add_argument(
-        "--skeleton-erode-radius",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.erode_radius,
-        help="Erosion radius applied before closing to separate touching regions (default: 4).",
-    )
