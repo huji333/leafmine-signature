@@ -6,11 +6,17 @@ from pathlib import Path
 import gradio as gr
 from PIL import Image
 
+from controllers.pipeline import PipelineConfig
 from models.skeletonization import run_skeletonization
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
-SEGMENTED_DIR = DATA_DIR / "segmented"
-SKELETONIZED_DIR = DATA_DIR / "skeletonized"
+PIPELINE_CONFIG = PipelineConfig(
+    segmented_dir=DATA_DIR / "segmented",
+    skeleton_dir=DATA_DIR / "skeletonized",
+    polyline_dir=DATA_DIR / "tmp",
+    signatures_dir=DATA_DIR / "signatures",
+    signature_csv=DATA_DIR / "signatures" / "signatures.csv",
+)
 
 
 def render() -> None:
@@ -46,35 +52,29 @@ def _handle_skeletonization(file_data: str | None):
     if file_data is None:
         raise gr.Error("Please upload a mask image before running skeletonization.")
 
-    _ensure_directories()
+    PIPELINE_CONFIG.ensure_directories()
 
     file_path = Path(file_data)
     upload_name = file_path.name
 
     with Image.open(file_path) as uploaded_image:
         segmented_image = uploaded_image.convert("L")
-    _save_image(
+    mask_path = _save_image(
         segmented_image,
-        SEGMENTED_DIR,
-        prefix="segmented",
+        PIPELINE_CONFIG.segmented_dir,
+        prefix="mask",
         original_name=upload_name,
     )
 
     result = run_skeletonization(segmented_image)
     skeleton_image: Image.Image = result["skeleton_mask"]
-    _save_image(
-        skeleton_image,
-        SKELETONIZED_DIR,
-        prefix="skeleton",
-        original_name=upload_name,
-    )
+    mask_stem = mask_path.stem
+    suffix = mask_stem[len("mask_") :] if mask_stem.startswith("mask_") else mask_stem
+    skeleton_filename = f"skeleton_{suffix}.png"
+    skeleton_path = PIPELINE_CONFIG.skeleton_dir / skeleton_filename
+    skeleton_image.save(skeleton_path)
 
     return segmented_image, skeleton_image
-
-
-def _ensure_directories() -> None:
-    SEGMENTED_DIR.mkdir(parents=True, exist_ok=True)
-    SKELETONIZED_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def _save_image(

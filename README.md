@@ -1,45 +1,34 @@
-# About
+# Leafmine Signature
 
-An asset pipeline for calculating signature of curvilinear leaf mines.
+Asset pipeline for calculating signatures of curvilinear leaf mines.
 
-# Usage
+## Launch the Management UI
 
-1. Run the setup command
+1. Build the Docker image (only once unless dependencies change):
 
-```
-make setup
-```
+   ```
+   make setup
+   ```
 
-2. Launch the Gradio interface
+2. Start the Gradio admin panel:
 
-```
-make run
-```
+   ```
+   make run
+   ```
 
-3. Open http://localhost:7860 in a browser
+3. Open http://localhost:7860. The container bind-mounts `./data` by default; override with `DATA_DIR=/abs/path make run` if you want outputs elsewhere.
 
-## Persisting Saved Images
+## Run The Batch Pipeline
 
-The app writes uploaded masks to `data/segmented/` and skeletonized results to `data/skeletonized/`. The `make run` command now mounts your host `data/` directory into the container, so anything saved in the UI appears immediately on your filesystem under that folder.
+1. Place pre-segmented binary PNGs in `data/segmented/` (or the same folder under your custom `DATA_DIR`).
+2. Execute the shared controller pipeline across every file:
 
-To store the files somewhere else, point `DATA_DIR` at an absolute path when launching the container:
+   ```
+   make process_segmented
+   ```
 
-```
-DATA_DIR=/abs/path/to/output make run
-```
+3. Optional knobs:
+   - Forward extra CLI flags (e.g., limit, CSV prefix) with `PIPELINE_ARGS="--limit 5 --csv-prefix nightly" make process_segmented`.
+   - Add `BUILD=1` when you specifically want to rebuild the Docker image before running.
 
-The custom directory will be bind-mounted into `/app/data`, which is the location the app reads and writes.
-
-## Longest Skeleton Component (WIP)
-
-Use the standalone helper to extract and visualize the longest skeleton path found in any PNG under `data/skeletonized/`:
-
-```
-python -m models.longest_component data/skeletonized/your_file.png --out-dir data/tmp
-```
-
-The command writes a `_longest.png` overlay (red path highlight) and a `_longest.json` file containing the polyline coordinates plus path statistics to `data/tmp/`.
-
-## Line Extension Tab
-
-Inside the Gradio UI there is also a **Line Extension** tab. Type the filename of any skeleton stored in `data/skeletonized/` (for example, `skeleton_20251210-064040.png`) and press **Extract Longest Path** to display the red-highlighted overlay inline. The tab surfaces the same polyline JSON that the CLI writes so you can quickly inspect downstream inputs for signature analysis.
+The command reuses the same controller as the UI to skeletonize each mask, emit overlays, and append signatures to a timestamped CSV under `data/signatures/`.

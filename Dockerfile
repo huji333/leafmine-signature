@@ -12,8 +12,7 @@ RUN apt-get update \
 COPY pyproject.toml uv.lock README.md ./
 COPY views/ ./views/
 COPY models/ ./models/
-
-RUN mkdir -p data/segmented data/skeletonized
+COPY controllers/ ./controllers/
 
 RUN ["uv", "sync", "--locked"]
 
