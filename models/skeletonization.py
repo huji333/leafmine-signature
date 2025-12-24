@@ -1,14 +1,8 @@
-"""
-Minimal helpers for turning a binary mask PNG into skeleton images.
-
-The current scope is intentionally small: read an image, skeletonize it, and
-return the original mask image plus the thin skeleton mask so the Gradio tab has
-something to display. Polyline extraction and post-processing will live in
-follow-up modules once this foundation works end-to-end.
-"""
+"""Skeletonization helpers that wrap preprocessing + pruning passes."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
@@ -21,39 +15,71 @@ except ImportError as exc:  # pragma: no cover - dependency guard
         "scikit-image is required for skeletonization."
     ) from exc
 
+from .skeletonization_utils import preprocess_mask
 
-def run_skeletonization(mask: Image.Image | str | Path) -> dict[str, Image.Image]:
+
+@dataclass(slots=True)
+class SkeletonizationConfig:
+    """Tunable parameters for the skeletonization pipeline."""
+
+    white_threshold: int = 200
+    smooth_radius: int = 3
+    erode_radius: int = 4
+    hole_area_threshold: int = 100
+
+
+def run_skeletonization(
+    mask: Image.Image | str | Path,
+    *,
+    config: SkeletonizationConfig | None = None,
+) -> dict[str, Image.Image]:
     """
-    Load a binary mask, skeletonize it, and return image-friendly artifacts.
+    Load a binary mask, run preprocess -> skeletonize, and return images.
 
     Args:
         mask: a Pillow image or path to the PNG mask (white mine, black background).
+        config: optional overrides for the preprocessing/pruning parameters.
 
     Returns:
         A dictionary containing:
             - ``mask``: the original binary mask as a Pillow image (mode "L").
+            - ``preprocessed_mask``: result after smoothing + hole filling.
             - ``skeleton_mask``: the skeletonized mask rendered as a Pillow image.
     """
 
-    mask_bool = _load_binary_mask(mask)
-    skeleton_bool = skeletonize(mask_bool)
+    cfg = config or SkeletonizationConfig()
+    mask_bool = _load_binary_mask(mask, threshold=max(0, min(255, int(cfg.white_threshold))))
+    clean_mask = preprocess_mask(
+        mask_bool,
+        smooth_radius=max(0, int(cfg.smooth_radius)),
+        erode_radius=max(0, int(cfg.erode_radius)),
+        hole_area_threshold=max(0, int(cfg.hole_area_threshold)),
+    )
+    skeleton_bool = skeletonize(clean_mask)
 
     return {
         "mask": _to_image(mask_bool),
+        "preprocessed_mask": _to_image(clean_mask),
         "skeleton_mask": _to_image(skeleton_bool),
     }
 
 
-def _load_binary_mask(source: Image.Image | str | Path) -> np.ndarray:
+def _load_binary_mask(
+    source: Image.Image | str | Path,
+    *,
+    threshold: int = 200,
+) -> np.ndarray:
     """Load a mask (file path or Pillow image) into a boolean numpy array."""
 
     if not isinstance(source, Image.Image):
         with Image.open(source) as opened:
-            source = opened.convert("L")
-    if source.mode != "L":
-        source = source.convert("L")
+            source = opened.convert("RGB")
+    if source.mode != "RGB":
+        source = source.convert("RGB")
 
-    return np.asarray(source) > 0
+    rgb = np.asarray(source, dtype=np.uint8)
+    thresh = np.clip(threshold, 0, 255)
+    return np.all(rgb >= thresh, axis=-1)
 
 
 def _to_image(mask: np.ndarray) -> Image.Image:
@@ -62,4 +88,4 @@ def _to_image(mask: np.ndarray) -> Image.Image:
     return Image.fromarray(np.uint8(mask) * 255, mode="L")
 
 
-__all__ = ["run_skeletonization"]
+__all__ = ["run_skeletonization", "SkeletonizationConfig"]

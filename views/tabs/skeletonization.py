@@ -7,7 +7,8 @@ import gradio as gr
 from PIL import Image
 
 from controllers.pipeline import PipelineConfig
-from models.skeletonization import run_skeletonization
+from controllers.skeletonization import process_mask
+from models.skeletonization import SkeletonizationConfig
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
 PIPELINE_CONFIG = PipelineConfig(
@@ -17,6 +18,7 @@ PIPELINE_CONFIG = PipelineConfig(
     signatures_dir=DATA_DIR / "signatures",
     signature_csv=DATA_DIR / "signatures" / "signatures.csv",
 )
+DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
 
 def render() -> None:
@@ -32,21 +34,58 @@ def render() -> None:
         file_types=["image"],
         file_count="single",
     )
+    with gr.Accordion("Skeletonization Settings", open=False):
+        smooth_radius_input = gr.Slider(
+            minimum=0,
+            maximum=10,
+            value=DEFAULT_SKELETON_CONFIG.smooth_radius,
+            step=1,
+            label="Closing Radius (smooth rough edges)",
+        )
+        hole_area_input = gr.Slider(
+            minimum=0,
+            maximum=2000,
+            value=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
+            step=10,
+            label="Hole Fill Area (px^2) - fill black holes up to this size",
+        )
+        erode_radius_input = gr.Slider(
+            minimum=0,
+            maximum=5,
+            value=DEFAULT_SKELETON_CONFIG.erode_radius,
+            step=1,
+            label="Erosion Radius (separate touching parts)",
+        )
     run_button = gr.Button("Skeletonize", variant="primary")
 
     with gr.Row():
         segmented_preview = gr.Image(label="Stored Mask Preview")
+        preprocessed_preview = gr.Image(label="Preprocessed Mask")
         skeleton_preview = gr.Image(label="Skeleton Preview")
 
     run_button.click(
         fn=_handle_skeletonization,
-        inputs=segmented_input,
-        outputs=[segmented_preview, skeleton_preview],
+        inputs=[
+            segmented_input,
+            smooth_radius_input,
+            hole_area_input,
+            erode_radius_input,
+        ],
+        outputs=[
+            segmented_preview,
+            preprocessed_preview,
+            skeleton_preview,
+        ],
         show_progress=True,
     )
 
 
-def _handle_skeletonization(file_data: str | None):
+def _handle_skeletonization(
+    file_data: str | None,
+    smooth_radius: float | int,
+    hole_area: float | int,
+    erode_radius: float | int,
+):
     """Gradio callback to persist inputs, run skeletonize, and persist outputs."""
 
     if file_data is None:
@@ -59,41 +98,27 @@ def _handle_skeletonization(file_data: str | None):
 
     with Image.open(file_path) as uploaded_image:
         segmented_image = uploaded_image.convert("L")
-    mask_path = _save_image(
-        segmented_image,
-        PIPELINE_CONFIG.segmented_dir,
-        prefix="mask",
-        original_name=upload_name,
+    config = SkeletonizationConfig(
+        smooth_radius=int(smooth_radius),
+        hole_area_threshold=int(hole_area),
+        erode_radius=int(erode_radius),
     )
 
-    result = run_skeletonization(segmented_image)
-    skeleton_image: Image.Image = result["skeleton_mask"]
-    mask_stem = mask_path.stem
-    suffix = mask_stem[len("mask_") :] if mask_stem.startswith("mask_") else mask_stem
-    skeleton_filename = f"skeleton_{suffix}.png"
-    skeleton_path = PIPELINE_CONFIG.skeleton_dir / skeleton_filename
-    skeleton_image.save(skeleton_path)
+    try:
+        result = process_mask(
+            segmented_image,
+            original_name=upload_name,
+            pipeline_config=PIPELINE_CONFIG,
+            config=config,
+        )
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
 
-    return segmented_image, skeleton_image
-
-
-def _save_image(
-    image: Image.Image,
-    directory: Path,
-    prefix: str,
-    original_name: str,
-) -> Path:
-    """Persist the given grayscale image and return the resulting path."""
-
-    base_name = Path(original_name or "upload.png").name
-    if Path(base_name).suffix == "":
-        base_name = f"{base_name}.png"
-
-    filename = f"{prefix}_{base_name}"
-    path = directory / filename
-
-    image.save(path)
-    return path
+    return (
+        result.mask_image,
+        result.preprocessed_image,
+        result.skeleton_image,
+    )
 
 
 __all__ = ["render"]

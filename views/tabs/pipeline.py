@@ -6,6 +6,7 @@ from pathlib import Path
 import gradio as gr
 from controllers.pipeline import PipelineConfig, run_pipeline_for_ui
 from models.signature import DIRECTION_CHOICES
+from models.skeletonization import SkeletonizationConfig
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
 PIPELINE_CONFIG = PipelineConfig(
@@ -15,6 +16,7 @@ PIPELINE_CONFIG = PipelineConfig(
     signatures_dir=DATA_DIR / "signatures",
     signature_csv=DATA_DIR / "signatures" / "signatures.csv",
 )
+DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
 
 def render() -> None:
@@ -92,6 +94,7 @@ def _run_pipeline(
             depth=depth,
             directions=directions,
             config=PIPELINE_CONFIG,
+            skeleton_config=DEFAULT_SKELETON_CONFIG,
         )
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
