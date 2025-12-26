@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Sequence
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 import colorsys
 
 from .skeleton_graph import SkeletonGraph
@@ -20,8 +20,9 @@ def render_graph_overlay(
     node_radius: int = 2,
     edge_width: int = 2,
     annotate_nodes: bool = False,
+    annotate_node_ids: set[int] | None = None,
     label_color: tuple[int, int, int] = (255, 255, 255),
-    label_font_size: int = 18,
+    label_font_size: int | None = None,
 ) -> Image.Image:
     """Draw the graph edges + nodes onto a copy of ``base_image``."""
 
@@ -35,6 +36,12 @@ def render_graph_overlay(
             continue
         draw.line([(start.x, start.y), (end.x, end.y)], fill=edge_color, width=edge_width)
 
+    font = None
+    if annotate_nodes:
+        font = _load_label_font(base_image.size, label_font_size)
+
+    annotate_ids = set(annotate_node_ids) if annotate_node_ids is not None else None
+
     if node_radius > 0 or annotate_nodes:
         for node in graph.nodes.values():
             bbox = [
@@ -43,12 +50,16 @@ def render_graph_overlay(
             ]
             if node_radius > 0:
                 draw.ellipse(bbox, fill=node_color)
-            if annotate_nodes:
+            should_label = annotate_nodes and (
+                annotate_ids is None or node.id in annotate_ids
+            )
+            if should_label:
                 position = (node.x + node_radius + 2, node.y - node_radius - 10)
                 draw.text(
                     position,
                     str(node.id),
                     fill=label_color,
+                    font=font,
                 )
 
     return overlay
@@ -63,6 +74,7 @@ def render_graph_preview(
     node_radius: int = 2,
     edge_width: int = 2,
     annotate_nodes: bool = False,
+    annotate_node_ids: set[int] | None = None,
     label_color: tuple[int, int, int] = (255, 255, 255),
     label_font_size: int | None = None,
 ) -> tuple[Image.Image, Image.Image]:
@@ -78,10 +90,25 @@ def render_graph_preview(
         node_radius=node_radius,
         edge_width=edge_width,
         annotate_nodes=annotate_nodes,
+        annotate_node_ids=annotate_node_ids,
         label_color=label_color,
         label_font_size=label_font_size,
     )
     return base, overlay
+
+
+def _load_label_font(
+    image_size: tuple[int, int],
+    requested_size: int | None,
+) -> ImageFont.ImageFont:
+    font_size = int(requested_size or 0)
+    if font_size <= 0:
+        min_dim = max(1, min(image_size))
+        font_size = max(16, min_dim // 28)
+    try:
+        return ImageFont.truetype("DejaVuSans.ttf", font_size)
+    except OSError:
+        return ImageFont.load_default()
 
 
 def render_route_overlay(

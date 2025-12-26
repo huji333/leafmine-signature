@@ -50,11 +50,13 @@ def render() -> None:
         skeleton_preview = gr.Image(label="Original Skeleton")
         pruned_preview = gr.Image(label="Pruned Overlay")
 
-    graph_json = gr.JSON(label="Graph JSON")
-    leaf_table = gr.Dataframe(
-        headers=["node_id", "x", "y"],
-        datatype=["number", "number", "number"],
-        label="Degree-1 nodes",
+    with gr.Accordion("Graph JSON", open=False):
+        graph_json = gr.JSON(label="Graph JSON")
+    short_edge_table = gr.Dataframe(
+        headers=["edge_id", "u", "v", "length_px"],
+        datatype=["number", "number", "number", "number"],
+        label="Leaf-connected short edges",
+        interactive=False,
     )
 
     start_node = gr.Number(
@@ -92,7 +94,7 @@ def render() -> None:
             skeleton_preview,
             pruned_preview,
             graph_json,
-            leaf_table,
+            short_edge_table,
             start_node,
             goal_node,
             graph_state,
@@ -124,7 +126,10 @@ def _handle_build_graph(
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
-    leaf_rows = [[leaf["id"], leaf["x"], leaf["y"]] for leaf in result.leaf_nodes]
+    short_edge_rows = [
+        [edge["edge_id"], edge["u"], edge["v"], edge["length"]]
+        for edge in result.short_edges
+    ]
 
     start_value = result.default_start if result.default_start is not None else None
     goal_value = result.default_goal if result.default_goal is not None else None
@@ -133,7 +138,7 @@ def _handle_build_graph(
         result.skeleton_image,
         result.pruned_overlay,
         result.graph_payload,
-        leaf_rows,
+        short_edge_rows,
         start_value,
         goal_value,
         result.session,

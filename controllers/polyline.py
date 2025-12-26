@@ -50,6 +50,7 @@ class GraphPrepResult:
     graph_payload: dict[str, object]
     graph_json_path: Path
     leaf_nodes: list[dict[str, int]]
+    short_edges: list[dict[str, float | int]]
     default_start: int | None
     default_goal: int | None
     status_message: str
@@ -94,8 +95,14 @@ def prepare_graph(
         node_id: index for index, comp in enumerate(components) for node_id in comp
     }
 
-    skeleton_image, overlay = _render_images(pruned_graph, skeleton_path)
     leaf_nodes = _leaf_metadata(pruned_graph)
+    leaf_ids = {leaf["id"] for leaf in leaf_nodes}
+    skeleton_image, overlay = _render_images(
+        pruned_graph,
+        skeleton_path,
+        annotate_node_ids=leaf_ids,
+    )
+    short_edges = _short_edge_summary(pruned_graph, leaf_ids=leaf_ids)
 
     payload = json.loads(graph_json_path.read_text())
     if not isinstance(payload, dict):
@@ -130,6 +137,7 @@ def prepare_graph(
         graph_payload=payload,
         graph_json_path=graph_json_path,
         leaf_nodes=leaf_nodes,
+        short_edges=short_edges,
         default_start=defaults[0],
         default_goal=defaults[1],
         status_message=message,
@@ -254,6 +262,31 @@ def _leaf_metadata(
     return leaves
 
 
+def _short_edge_summary(
+    graph: SkeletonGraph,
+    *,
+    leaf_ids: set[int] | None = None,
+    limit: int = 5,
+) -> list[dict[str, float | int]]:
+    if limit <= 0:
+        return []
+    records = []
+    filtered_leaf_ids = leaf_ids or set()
+    for edge in graph.edges.values():
+        if filtered_leaf_ids and edge.u not in filtered_leaf_ids and edge.v not in filtered_leaf_ids:
+            continue
+        records.append(
+            {
+                "edge_id": edge.id,
+                "length": round(float(edge.weight), 2),
+                "u": edge.u,
+                "v": edge.v,
+            }
+        )
+    records.sort(key=lambda item: item["length"])
+    return records[:limit]
+
+
 def _default_start_goal(
     graph: SkeletonGraph,
     components: list[set[int]],
@@ -295,13 +328,16 @@ def _connected_components(graph: SkeletonGraph) -> list[set[int]]:
 def _render_images(
     graph: SkeletonGraph,
     skeleton_path: Path,
+    *,
+    annotate_node_ids: set[int] | None = None,
 ) -> tuple[Image.Image, Image.Image]:
     return render_graph_preview(
         graph,
         skeleton_path,
         annotate_nodes=True,
-        node_radius=3,
-        edge_width=2,
+        annotate_node_ids=annotate_node_ids,
+        node_radius=5,
+        edge_width=3,
         label_color=(255, 255, 0),
     )
 
