@@ -4,7 +4,6 @@ from typing import Any
 
 import gradio as gr
 
-from controllers.pipeline import PipelineConfig
 from controllers.polyline import (
     GraphPrepResult,
     GraphSession,
@@ -13,13 +12,14 @@ from controllers.polyline import (
     compute_route_flow,
     prepare_graph,
 )
+from data_paths import DataPaths
 from views.components import file_selector
 from views.config import DataBrowser
 
 
 def render(
     *,
-    pipeline_config: PipelineConfig | None = None,
+    data_paths: DataPaths | None = None,
     data_browser: DataBrowser | None = None,
 ) -> None:
     gr.Markdown(
@@ -28,7 +28,7 @@ def render(
         "You can also type an absolute path if the file lives elsewhere."
     )
 
-    cfg = pipeline_config or PipelineConfig.from_data_dir()
+    cfg = data_paths or DataPaths.from_data_dir()
     browser = data_browser or DataBrowser(cfg)
     tab_config = PolylineTabConfig(
         skeleton_dir=cfg.skeleton_dir,

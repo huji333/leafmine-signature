@@ -16,7 +16,7 @@ Split by steps
 
 ### controllers
 
-Thin orchestration layer that keeps filesystem + pipeline logic outside the Gradio tabs. `controllers/pipeline.process_segmented_mask` and the helpers in `controllers/polyline.py` / `controllers/polyline_signatures.py` are invoked directly from the UI; we no longer ship separate CLI entrypoints.
+Thin orchestration layer focused on the concrete Gradio tabs (skeletonization, polyline routing, signature batching). Each tab imports the matching helper module directly; there is no separate monolithic pipeline controller anymore.
 
 ## Operational Notes
 

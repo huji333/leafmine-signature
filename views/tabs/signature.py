@@ -6,21 +6,21 @@ from functools import partial
 
 import gradio as gr
 
-from controllers.pipeline import PipelineConfig
 from controllers.polyline_signatures import (
     PolylineSignatureConfig,
     analyze_polylines,
 )
+from data_paths import DataPaths
 from models.signature import default_log_signature_csv_path
 from views.config import DataBrowser
 
 
 def render(
     *,
-    pipeline_config: PipelineConfig | None = None,
+    data_paths: DataPaths | None = None,
     data_browser: DataBrowser | None = None,
 ) -> None:
-    cfg = pipeline_config or PipelineConfig.from_data_dir()
+    cfg = data_paths or DataPaths.from_data_dir()
     browser = data_browser or DataBrowser(cfg)
 
     gr.Markdown(
@@ -87,7 +87,7 @@ def _refresh_polylines(
 
 
 def _handle_signatures(
-    pipeline_config: PipelineConfig,
+    data_paths: DataPaths,
     selected_files: list[str] | None,
     depth_value: float | int,
     overwrite: bool,
@@ -95,7 +95,7 @@ def _handle_signatures(
     if not selected_files:
         raise gr.Error("Select at least one polyline JSON before running.")
 
-    signature_config = _create_signature_config(pipeline_config)
+    signature_config = _create_signature_config(data_paths)
     signature_config.ensure()
     depth = int(depth_value)
     paths = [_resolve_polyline_path(signature_config, entry) for entry in selected_files]
@@ -152,13 +152,13 @@ def _load_csv_preview(csv_path: Path, limit: int = 20) -> tuple[list[list[str]],
     return table, cols
 
 
-def _create_signature_config(pipeline_config: PipelineConfig) -> PolylineSignatureConfig:
-    summary_csv = default_log_signature_csv_path(pipeline_config.signatures_dir)
-    data_dir = pipeline_config.segmented_dir.parent
+def _create_signature_config(data_paths: DataPaths) -> PolylineSignatureConfig:
+    summary_csv = default_log_signature_csv_path(data_paths.signatures_dir)
+    data_dir = data_paths.segmented_dir.parent
     return PolylineSignatureConfig(
         data_dir=data_dir,
-        polyline_dir=pipeline_config.polyline_dir,
-        output_dir=pipeline_config.signatures_dir,
+        polyline_dir=data_paths.polyline_dir,
+        output_dir=data_paths.signatures_dir,
         summary_csv=summary_csv,
     )
 

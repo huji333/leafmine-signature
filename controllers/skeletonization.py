@@ -8,7 +8,7 @@ from pathlib import Path
 
 from PIL import Image
 
-from .pipeline import PipelineConfig
+from data_paths import DataPaths
 from models.utils import apply_stage_prefix, save_png, strip_prefix
 from models.skeletonization import (
     SkeletonizationConfig,
@@ -30,24 +30,24 @@ def process_mask(
     mask: Image.Image,
     *,
     original_name: str,
-    pipeline_config: PipelineConfig | None = None,
+    data_paths: DataPaths | None = None,
     config: SkeletonizationConfig | None = None,
 ) -> SkeletonizationResult:
     """Persist a segmented mask and run the preprocessing + skeletonization pipeline."""
 
-    cfg = pipeline_config or PipelineConfig()
-    cfg.ensure_directories()
+    paths = data_paths or DataPaths.from_data_dir()
+    paths.ensure_directories()
 
     mask_gray = mask.convert("L")
     sample_base = _derive_sample_base(original_name)
-    mask_path = _save_stage_image(mask_gray, cfg.segmented_dir, "segmented", sample_base)
+    mask_path = _save_stage_image(mask_gray, paths.segmented_dir, "segmented", sample_base)
 
     artifacts = run_skeletonization(mask_gray, config=config)
     skeleton = artifacts["skeleton_mask"]
 
     skeleton_path = _save_stage_image(
         skeleton,
-        cfg.skeleton_dir,
+        paths.skeleton_dir,
         "skeletonized",
         sample_base,
     )

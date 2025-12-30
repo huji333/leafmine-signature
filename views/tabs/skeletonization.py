@@ -8,8 +8,8 @@ import numpy as np
 from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
 from skimage.measure import label
 
-from controllers.pipeline import PipelineConfig
 from controllers.skeletonization import process_mask
+from data_paths import DataPaths
 from models.skeletonization import SkeletonizationConfig
 from models.utils import resolve_segmented_mask_path
 from views.components import file_selector
@@ -20,12 +20,12 @@ DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
 def render(
     *,
-    pipeline_config: PipelineConfig | None = None,
+    data_paths: DataPaths | None = None,
     data_browser: DataBrowser | None = None,
 ) -> None:
     """Upload or reuse segmented masks and inspect the resulting skeleton."""
 
-    cfg = pipeline_config or PipelineConfig.from_data_dir()
+    cfg = data_paths or DataPaths.from_data_dir()
     browser = data_browser or DataBrowser(cfg)
 
     gr.Markdown(
@@ -108,7 +108,7 @@ def render(
 
 
 def _handle_skeletonization(
-    pipeline_config: PipelineConfig,
+    data_paths: DataPaths,
     data_browser: DataBrowser,
     selected_filename: str | None,
     uploaded_file: str | None,
@@ -118,9 +118,9 @@ def _handle_skeletonization(
 ):
     """Persist the mask if needed, run skeletonization, and surface diagnostics."""
 
-    pipeline_config.ensure_directories()
+    data_paths.ensure_directories()
     mask_image, source_name = _resolve_mask_source(
-        pipeline_config, uploaded_file, selected_filename
+        data_paths, uploaded_file, selected_filename
     )
     config = SkeletonizationConfig(
         smooth_radius=int(smooth_radius),
@@ -132,7 +132,7 @@ def _handle_skeletonization(
         result = process_mask(
             mask_image,
             original_name=source_name,
-            pipeline_config=pipeline_config,
+            data_paths=data_paths,
             config=config,
         )
     except ValueError as exc:
@@ -161,7 +161,7 @@ def _handle_skeletonization(
 
 
 def _resolve_mask_source(
-    pipeline_config: PipelineConfig,
+    data_paths: DataPaths,
     uploaded_file: str | None,
     selected_filename: str | None,
 ) -> tuple[Image.Image, str]:
@@ -172,11 +172,11 @@ def _resolve_mask_source(
     if selected_filename:
         candidate = resolve_segmented_mask_path(
             selected_filename,
-            [pipeline_config.segmented_dir],
+            [data_paths.segmented_dir],
         )
         if candidate is None:
             raise gr.Error(
-                f"Could not find `{selected_filename}` in {pipeline_config.segmented_dir}. "
+                f"Could not find `{selected_filename}` in {data_paths.segmented_dir}. "
                 "Use the refresh button if new files were added."
             )
         return _load_grayscale_image(candidate), candidate.name

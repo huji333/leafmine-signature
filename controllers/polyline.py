@@ -78,14 +78,6 @@ class RouteFlowResult:
     route_preview: Image.Image | None
 
 
-@dataclass(slots=True)
-class AutoRouteArtifacts:
-    highlight_path: Path
-    polyline_path: Path
-    graph_result: GraphPrepResult
-    route_result: RouteFlowResult
-
-
 def prepare_graph(
     skeleton_filename: str | Path,
     branch_threshold: float,
@@ -269,54 +261,6 @@ def compute_route_flow(
     )
 
 
-def auto_route_polyline(
-    skeleton_path: str | Path,
-    *,
-    resample_points: int,
-    branch_threshold: float = 0.0,
-    config: PolylineTabConfig | None = None,
-    highlight_dir: Path | None = None,
-) -> AutoRouteArtifacts:
-    """Compute a default route polyline using the first available start/goal pair."""
-
-    cfg = config or PolylineTabConfig()
-    cfg.ensure()
-
-    prep = prepare_graph(skeleton_path, branch_threshold, config=cfg)
-    start = prep.default_start
-    goal = prep.default_goal or start
-    if start is None:
-        raise ValueError("Unable to determine a default start node for the skeleton graph.")
-    if goal is None:
-        goal = start
-
-    route = compute_route_flow(
-        prep.session,
-        start_node=start,
-        goal_node=goal,
-        resample_points=resample_points,
-    )
-    if route.polyline_path is None:
-        raise RuntimeError("Route computation did not emit a polyline path.")
-
-    highlight_parent = highlight_dir or cfg.polyline_dir
-    highlight_parent.mkdir(parents=True, exist_ok=True)
-    highlight_path = highlight_parent / prefixed_name("route", prep.session.sample_base, ".png")
-
-    if route.route_preview is not None:
-        route.route_preview.save(highlight_path)
-    else:
-        with Image.open(prep.session.skeleton_path) as img:
-            img.convert("RGB").save(highlight_path)
-
-    return AutoRouteArtifacts(
-        highlight_path=highlight_path,
-        polyline_path=route.polyline_path,
-        graph_result=prep,
-        route_result=route,
-    )
-
-
 def _resolve_filename(filename: str | Path, skeleton_dir: Path) -> Path:
     path = Path(filename)
     if not path.is_absolute():
@@ -444,8 +388,6 @@ __all__ = [
     "GraphSession",
     "GraphPrepResult",
     "RouteFlowResult",
-    "AutoRouteArtifacts",
     "prepare_graph",
     "compute_route_flow",
-    "auto_route_polyline",
 ]
