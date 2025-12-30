@@ -21,7 +21,6 @@ from .skeleton_graph import (
     SkeletonGraph,
     build_skeleton_graph,
     prune_short_branches,
-    write_skeleton_graph,
 )
 from .skeletonization import run_skeletonization
 
@@ -31,7 +30,6 @@ __all__ = [
     "GraphEdge",
     "SkeletonGraph",
     "build_skeleton_graph",
-    "write_skeleton_graph",
     "prune_short_branches",
     "RouteEdgeVisit",
     "RouteResult",

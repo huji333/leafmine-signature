@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from data_paths import DataPaths
+from controllers.data_paths import DataPaths
 
 
 @dataclass(slots=True)

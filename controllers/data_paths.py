@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-
-from models.signature import default_log_signature_csv_path
 
 
 def _default_data_dir() -> Path:
@@ -23,17 +21,15 @@ class DataPaths:
     segmented_dir: Path = Path("data/segmented")
     skeleton_dir: Path = Path("data/skeletonized")
     polyline_dir: Path = Path("data/polylines")
-    tmp_dir: Path = Path("data/tmp")
+    graph_dir: Path = Path("data/graphs")
     signatures_dir: Path = Path("data/logsig")
-    signature_csv: Path = field(default_factory=default_log_signature_csv_path)
 
     def ensure_directories(self) -> None:
         self.segmented_dir.mkdir(parents=True, exist_ok=True)
         self.skeleton_dir.mkdir(parents=True, exist_ok=True)
         self.polyline_dir.mkdir(parents=True, exist_ok=True)
-        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        self.graph_dir.mkdir(parents=True, exist_ok=True)
         self.signatures_dir.mkdir(parents=True, exist_ok=True)
-        self.signature_csv.parent.mkdir(parents=True, exist_ok=True)
 
     @classmethod
     def from_data_dir(cls, data_dir: Path | None = None) -> DataPaths:
@@ -44,9 +40,8 @@ class DataPaths:
             segmented_dir=base / "segmented",
             skeleton_dir=base / "skeletonized",
             polyline_dir=base / "polylines",
-            tmp_dir=base / "tmp",
+            graph_dir=base / "graphs",
             signatures_dir=signatures_dir,
-            signature_csv=default_log_signature_csv_path(signatures_dir),
         )
 
 

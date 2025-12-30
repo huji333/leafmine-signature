@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 from functools import partial
-from pathlib import Path
 
 import gradio as gr
-import numpy as np
-from PIL import Image, ImageFilter, ImageOps, UnidentifiedImageError
-from skimage.measure import label
 
-from controllers.skeletonization import process_mask
-from data_paths import DataPaths
+from controllers.skeletonization import process_mask, resolve_mask_source
+from controllers.data_paths import DataPaths
 from models.skeletonization import SkeletonizationConfig
-from models.utils import resolve_segmented_mask_path
 from views.components import file_selector
 from views.config import DataBrowser
+from PIL import Image, ImageFilter, ImageOps
+import numpy as np
+from skimage.measure import label
 
 DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
@@ -119,9 +117,15 @@ def _handle_skeletonization(
     """Persist the mask if needed, run skeletonization, and surface diagnostics."""
 
     data_paths.ensure_directories()
-    mask_image, source_name = _resolve_mask_source(
-        data_paths, uploaded_file, selected_filename
-    )
+    try:
+        mask_image, source_name = resolve_mask_source(
+            data_paths,
+            uploaded_file,
+            selected_filename,
+        )
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
+
     config = SkeletonizationConfig(
         smooth_radius=int(smooth_radius),
         hole_area_threshold=int(hole_area),
@@ -138,9 +142,8 @@ def _handle_skeletonization(
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
-    overlay = _render_overlay(result.mask_image, result.skeleton_image)
+    overlay = _render_skeleton_overlay(result.mask_image, result.skeleton_image)
     component_msg = _summarize_components(result.skeleton_image)
-
     status = (
         f"Saved `{result.mask_path.name}` -> `{result.skeleton_path.name}` "
         f"(closing={config.smooth_radius}, hole<={config.hole_area_threshold}, "
@@ -160,53 +163,15 @@ def _handle_skeletonization(
     )
 
 
-def _resolve_mask_source(
-    data_paths: DataPaths,
-    uploaded_file: str | None,
-    selected_filename: str | None,
-) -> tuple[Image.Image, str]:
-    if uploaded_file:
-        upload_path = Path(uploaded_file)
-        return _load_grayscale_image(upload_path), upload_path.name
+def _render_skeleton_overlay(mask_image: Image.Image, skeleton_image: Image.Image) -> Image.Image:
+    """Overlay a thickened skeleton on the mask for quick QA."""
 
-    if selected_filename:
-        candidate = resolve_segmented_mask_path(
-            selected_filename,
-            [data_paths.segmented_dir],
-        )
-        if candidate is None:
-            raise gr.Error(
-                f"Could not find `{selected_filename}` in {data_paths.segmented_dir}. "
-                "Use the refresh button if new files were added."
-            )
-        return _load_grayscale_image(candidate), candidate.name
-
-    raise gr.Error("Upload a segmented mask or choose an existing filename first.")
-
-
-def _load_grayscale_image(path: Path) -> Image.Image:
-    try:
-        with Image.open(path) as src:
-            image = src.convert("L")
-            image.load()
-            return image
-    except FileNotFoundError as exc:
-        raise gr.Error(f"Mask source {path} was not found.") from exc
-    except UnidentifiedImageError as exc:
-        raise gr.Error(f"{path} is not a valid image file.") from exc
-
-
-def _render_overlay(mask_image: Image.Image, skeleton_image: Image.Image) -> Image.Image:
-    """Thicken the skeleton and overlay it on the original mask for quick QA."""
-
-    # Base is solid black so the mine stands out once tinted.
     base = Image.new("RGBA", mask_image.size, (0, 0, 0, 255))
 
     mask_l = ImageOps.autocontrast(mask_image)
     mask_alpha = mask_l.point(lambda value: int(180 if value > 0 else 0))
     mask_overlay = Image.new("RGBA", mask_image.size, (180, 180, 180, 0))
     mask_overlay.putalpha(mask_alpha)
-
     combined = Image.alpha_composite(base, mask_overlay)
 
     thick = skeleton_image.filter(ImageFilter.MaxFilter(size=5))

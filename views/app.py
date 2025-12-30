@@ -4,7 +4,7 @@ import os
 
 import gradio as gr
 
-from data_paths import DataPaths
+from controllers.data_paths import DataPaths
 from views.config import DataBrowser
 from views.tabs import polyline, signature, skeletonization
 

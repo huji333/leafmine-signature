@@ -132,19 +132,6 @@ def build_skeleton_graph(
     return graph
 
 
-def write_skeleton_graph(
-    image_path: Path | str,
-    output_dir: Path | str = Path("data/tmp"),
-) -> Path:
-    graph = build_skeleton_graph(image_path)
-    output_dir = Path(output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-    image_path = Path(image_path)
-    output_path = output_dir / f"{image_path.stem}_graph.json"
-    graph.save(output_path)
-    return output_path
-
-
 def prune_short_branches(
     graph: SkeletonGraph, min_branch_length: float
 ) -> SkeletonGraph:

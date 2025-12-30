@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import argparse
 import csv
 import json
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
+from functools import lru_cache
 
 import numpy as np
-from functools import lru_cache
 
 from .utils import canonical_sample_name, prefixed_name
 

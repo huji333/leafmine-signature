@@ -6,9 +6,10 @@ from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
-from data_paths import DataPaths
+from controllers.artifacts import resolve_segmented_mask_path
+from controllers.data_paths import DataPaths
 from models.utils import apply_stage_prefix, save_png, strip_prefix
 from models.skeletonization import (
     SkeletonizationConfig,
@@ -60,6 +61,31 @@ def process_mask(
     )
 
 
+def resolve_mask_source(
+    data_paths: DataPaths,
+    uploaded_file: str | Path | None,
+    selected_filename: str | None,
+) -> tuple[Image.Image, str]:
+    """Return the grayscale mask image to process plus its source name."""
+
+    if uploaded_file:
+        upload_path = Path(uploaded_file)
+        return _load_grayscale_image(upload_path), upload_path.name
+
+    if selected_filename:
+        candidate = resolve_segmented_mask_path(
+            selected_filename,
+            [data_paths.segmented_dir],
+        )
+        if candidate is None:
+            raise ValueError(
+                f"Could not find `{selected_filename}` in {data_paths.segmented_dir}."
+            )
+        return _load_grayscale_image(candidate), candidate.name
+
+    raise ValueError("Upload a segmented mask or choose an existing filename first.")
+
+
 def _save_stage_image(
     image: Image.Image,
     directory: Path,
@@ -79,4 +105,20 @@ def _derive_sample_base(original_name: str) -> str:
     return strip_prefix(stem)
 
 
-__all__ = ["SkeletonizationResult", "process_mask"]
+def _load_grayscale_image(path: Path) -> Image.Image:
+    try:
+        with Image.open(path) as src:
+            image = src.convert("L")
+            image.load()
+            return image
+    except FileNotFoundError as exc:
+        raise ValueError(f"Mask source {path} was not found.") from exc
+    except UnidentifiedImageError as exc:
+        raise ValueError(f"{path} is not a valid image file.") from exc
+
+
+__all__ = [
+    "SkeletonizationResult",
+    "process_mask",
+    "resolve_mask_source",
+]

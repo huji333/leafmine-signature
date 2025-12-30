@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Iterable, Sequence
 
-from .naming import canonical_sample_name, prefixed_name
+from models.utils import canonical_sample_name, prefixed_name
 
 
 def resolve_stage_artifact_path(
