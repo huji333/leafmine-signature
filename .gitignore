@@ -12,6 +12,10 @@ wheels/
 # Virtual environments
 .venv
 
+# Tool caches
+.cache/
+.uv-cache/
+
 # Data files - keep directory structure but exclude most files
 # Allow data/ directory structure
 data/*

@@ -1,7 +1,7 @@
-"""Segmentation->signature orchestration helpers.
+"""Segmentation->log-signature orchestration helpers.
 
 This module implements the end-to-end pipeline (segmented mask -> skeleton ->
-longest path -> signature.
+route -> log signature).
 """
 
 from __future__ import annotations
@@ -9,20 +9,20 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Callable, Sequence
 
 from PIL import Image
 
-from models.longest_component import export_longest_path
+from .polyline import PolylineTabConfig, auto_route_polyline
+from models.utils import apply_stage_prefix, load_image, strip_prefix
 from models.signature import (
-    DIRECTION_CHOICES,
-    Direction,
-    SignatureResult,
-    signature_from_json,
-    write_signature_csv,
+    LogSignatureResult,
+    append_log_signature_csv,
+    default_log_signature_csv_path,
+    log_signature_from_json,
 )
 from models.skeletonization import SkeletonizationConfig, run_skeletonization
 
@@ -36,9 +36,10 @@ class PipelineConfig:
 
     segmented_dir: Path = Path("data/segmented")
     skeleton_dir: Path = Path("data/skeletonized")
-    polyline_dir: Path = Path("data/tmp")
-    signatures_dir: Path = Path("data/signatures")
-    signature_csv: Path = Path("data/signatures/signatures.csv")
+    polyline_dir: Path = Path("data/polylines")
+    signatures_dir: Path = Path("data/logsig")
+    signature_csv: Path = field(default_factory=default_log_signature_csv_path)
+    polyline_branch_threshold: float = 0.0
 
     def ensure_directories(self) -> None:
         """Create output folders so downstream saves never fail."""
@@ -49,17 +50,6 @@ class PipelineConfig:
         self.signatures_dir.mkdir(parents=True, exist_ok=True)
         self.signature_csv.parent.mkdir(parents=True, exist_ok=True)
 
-    def with_timestamped_signature_csv(self, *, prefix: str = "signatures") -> "PipelineConfig":
-        """Return a new config whose signature CSV includes a timestamp.
-
-        Useful for batch/Make runs where each invocation should write to a
-        fresh CSV like ``data/signatures/<prefix>_20251219-153000.csv``.
-        """
-
-        safe_prefix = _slugify(prefix) or "signatures"
-        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
-        filename = f"{safe_prefix}_{timestamp}.csv"
-        return replace(self, signature_csv=self.signatures_dir / filename)
 
 
 @dataclass(slots=True)
@@ -71,10 +61,10 @@ class PipelineResult:
     highlight_path: Path
     polyline_path: Path
     signature_csv_path: Path
-    signature_results: list[SignatureResult]
+    signature_results: list[LogSignatureResult]
 
     @property
-    def signature(self) -> SignatureResult:
+    def signature(self) -> LogSignatureResult:
         """Convenience accessor returning the first signature result."""
 
         return self.signature_results[0]
@@ -97,8 +87,6 @@ def process_segmented_mask(
     skeleton_config: SkeletonizationConfig | None = None,
     num_samples: int = 256,
     depth: int = 4,
-    direction: Direction = "forward",
-    directions: Sequence[Direction] | None = None,
 ) -> PipelineResult:
     """Persist a segmented mask and push it through the remaining stages.
 
@@ -112,59 +100,50 @@ def process_segmented_mask(
             folders. The defaults match the repo's ``data/*`` layout.
         skeleton_config: Optional :class:`SkeletonizationConfig` that tunes
             mask cleanup before skeletonization.
-        num_samples: Resampling count before signature calculation.
-        depth: Truncation depth for the path signature.
-        direction: Whether the signature should follow the forward or
-            reverse traversal of the polyline.
+        num_samples: Resampling count for the route polyline (passed through
+            to the controllers.polyline helpers).
+        depth: Truncation depth for the log signature.
 
     Returns:
         PipelineResult containing file paths for every artifact plus the
-        in-memory :class:`SignatureResult`.
+        in-memory :class:`LogSignatureResult`.
     """
 
     cfg = config or PipelineConfig()
     cfg.ensure_directories()
     skel_cfg = skeleton_config or DEFAULT_SKELETON_CONFIG
 
-    mask_path, original_base = _resolve_mask_artifact(segmented_mask, cfg, base_name)
+    mask_path, sample_base = _resolve_mask_artifact(segmented_mask, cfg, base_name)
 
     skeleton_artifacts = run_skeletonization(mask_path, config=skel_cfg)
-    skeleton_stem = _ensure_prefix("skeleton_", original_base)
+    skeleton_stem = apply_stage_prefix("skeletonized", sample_base)
     skeleton_path = cfg.skeleton_dir / f"{skeleton_stem}.png"
     skeleton_artifacts["skeleton_mask"].save(skeleton_path)
 
-    longest = export_longest_path(skeleton_path, cfg.polyline_dir)
-    directions_to_use: tuple[Direction, ...]
-    if directions:
-        directions_to_use = tuple(directions)
-    else:
-        directions_to_use = (direction,)
+    poly_cfg = PolylineTabConfig(
+        skeleton_dir=cfg.skeleton_dir,
+        tmp_dir=cfg.polyline_dir,
+        polyline_dir=cfg.polyline_dir,
+    )
+    route_artifacts = auto_route_polyline(
+        skeleton_path,
+        resample_points=num_samples,
+        branch_threshold=cfg.polyline_branch_threshold,
+        config=poly_cfg,
+        highlight_dir=cfg.polyline_dir,
+    )
 
-    signature_results: list[SignatureResult] = []
-    signature_csv_path: Path | None = None
-
-    for dir_choice in directions_to_use:
-        if dir_choice not in DIRECTION_CHOICES:
-            raise ValueError(f"Unsupported direction: {dir_choice}")
-        signature = signature_from_json(
-            longest["polyline"],
-            num_samples=num_samples,
-            depth=depth,
-            direction=dir_choice,
-        )
-        signature_csv_path = write_signature_csv(signature, cfg.signature_csv)
-        signature_results.append(signature)
-
-    if not signature_results or signature_csv_path is None:
-        raise RuntimeError("No signatures were generated; ensure directions are provided.")
+    log_signature = log_signature_from_json(route_artifacts.polyline_path, depth=depth)
+    _ensure_sample_metadata(log_signature, mask_path)
+    signature_csv_path = append_log_signature_csv(log_signature, cfg.signature_csv)
 
     return PipelineResult(
         mask_path=mask_path,
         skeleton_path=skeleton_path,
-        highlight_path=longest["highlight"],
-        polyline_path=longest["polyline"],
+        highlight_path=route_artifacts.highlight_path,
+        polyline_path=route_artifacts.polyline_path,
         signature_csv_path=signature_csv_path,
-        signature_results=signature_results,
+        signature_results=[log_signature],
     )
 
 
@@ -174,21 +153,16 @@ def run_pipeline_for_ui(
     base_name: str | None = None,
     num_samples: float | int,
     depth: float | int,
-    directions: Sequence[str] | None = None,
     config: PipelineConfig | None = None,
     skeleton_config: SkeletonizationConfig | None = None,
 ) -> PipelineUIResult:
     """Run the pipeline with UI-friendly input validation and output formatting.
 
-    This function validates inputs, converts types, runs the pipeline, and formats
-    results for Gradio UI consumption. It keeps UI-specific logic out of the views layer.
-
     Args:
         mask_file: Path to the segmented mask file.
         base_name: Optional override for artifact filenames.
-        num_samples: Resampling count (will be converted to int).
-        depth: Signature depth (will be converted to int).
-        directions: List of direction strings to compute signatures for.
+        num_samples: Resampling count (converted to int).
+        depth: Log-signature depth (converted to int).
         config: Optional pipeline configuration.
         skeleton_config: Optional skeletonization config passed through to the models layer.
 
@@ -196,20 +170,15 @@ def run_pipeline_for_ui(
         PipelineUIResult with formatted image, signature summary, and status message.
 
     Raises:
-        ValueError: If inputs are invalid (mask_file is None, directions are empty,
-            or num_samples/depth cannot be converted to integers).
+        ValueError: If inputs are invalid or the numeric parameters cannot be converted.
     """
+
     if mask_file is None:
         raise ValueError("Upload a segmented mask first.")
-
-    base = base_name.strip() if base_name else None
-    selected_dirs = [d for d in (directions or []) if d in DIRECTION_CHOICES]
-    if not selected_dirs:
-        raise ValueError("Select at least one signature direction.")
-
     if num_samples is None or depth is None:
         raise ValueError("Enter numeric values for samples and depth.")
 
+    base = base_name.strip() if base_name else None
     try:
         samples = int(num_samples)
         depth_value = int(depth)
@@ -223,8 +192,6 @@ def run_pipeline_for_ui(
         skeleton_config=skeleton_config,
         num_samples=samples,
         depth=depth_value,
-        direction=DIRECTION_CHOICES[0],
-        directions=selected_dirs,
     )
 
     with Image.open(result.highlight_path) as highlight_image:
@@ -232,13 +199,12 @@ def run_pipeline_for_ui(
 
     signature_summary = [
         {
-            "direction": signature.direction,
+            "sample_filename": signature.sample_filename or result.mask_path.name,
             "depth": signature.depth,
+            "dimension": signature.dimension,
             "num_samples": signature.num_samples,
-            "signature_dim": signature.dimension,
-            "path_points": signature.path_points,
+            "resample_points": signature.resample_points,
             "path_length": round(signature.path_length, 3),
-            "start_xy": [round(signature.start_xy[0], 3), round(signature.start_xy[1], 3)],
             "csv_path": str(result.signature_csv_path),
             "polyline_json": str(result.polyline_path),
             "highlight_png": str(result.highlight_path),
@@ -248,10 +214,10 @@ def run_pipeline_for_ui(
         for signature in result.signature_results
     ]
 
+    primary = result.signature_results[0]
     status = (
         f"Saved mask `{result.mask_path.name}` → skeleton `{result.skeleton_path.name}` "
-        f"→ signature CSV `{result.signature_csv_path.name}` "
-        f"({len(result.signature_results)} direction(s))."
+        f"→ appended log-signature row in `{result.signature_csv_path.name}`."
     )
 
     return PipelineUIResult(
@@ -270,8 +236,6 @@ def process_with_segmenter(
     skeleton_config: SkeletonizationConfig | None = None,
     num_samples: int = 256,
     depth: int = 4,
-    direction: Direction = "forward",
-    directions: Sequence[Direction] | None = None,
 ) -> PipelineResult:
     """Run an ML/heuristic segmenter first, then finish the pipeline.
 
@@ -283,7 +247,7 @@ def process_with_segmenter(
     cfg = config or PipelineConfig()
     cfg.ensure_directories()
 
-    rgb_image = _load_image(image).convert("RGB")
+    rgb_image = load_image(image, mode="RGB")
     mask_image = segmenter(rgb_image)
     if not isinstance(mask_image, Image.Image):
         raise TypeError("segmenter must return a Pillow Image")
@@ -302,12 +266,7 @@ def process_with_segmenter(
         skeleton_config=skeleton_config,
         num_samples=num_samples,
         depth=depth,
-        direction=direction,
-        directions=directions,
     )
-
-
-_KNOWN_PREFIXES = ("mask_", "segmented_", "skeleton_", "skeletonized_")
 
 
 def _resolve_mask_artifact(
@@ -326,7 +285,7 @@ def _resolve_mask_artifact(
     try:
         resolved.relative_to(segmented_root)
     except ValueError:
-        mask_image = _load_image(source_path, mode="L")
+        mask_image = load_image(source_path, mode="L")
         copied = _save_mask_image(
             mask_image,
             cfg=cfg,
@@ -340,38 +299,28 @@ def _resolve_mask_artifact(
     return source_path, base
 
 
+def _ensure_sample_metadata(result: LogSignatureResult, mask_path: Path) -> None:
+    """Populate sample filename metadata on the log-signature result if missing."""
+
+    if not result.sample_filename:
+        result.sample_filename = Path(mask_path).name
+
+
 def _derive_base_name(source: object | None, override: str | None) -> str:
     if override:
         cleaned = Path(str(override)).stem.strip()
         if cleaned:
-            return _strip_prefix(cleaned)
+            return strip_prefix(cleaned)
         raise ValueError("base_name must contain at least one visible character")
 
     if isinstance(source, (str, Path)):
         stem = Path(source).stem.strip()
         if stem:
-            stripped = _strip_prefix(stem)
+            stripped = strip_prefix(stem)
             if stripped:
                 return stripped
 
     return datetime.now().strftime("%Y%m%d-%H%M%S")
-
-
-def _ensure_prefix(prefix: str, base: str) -> str:
-    if base.startswith(prefix):
-        return base
-    return f"{prefix}{base}"
-
-
-def _strip_prefix(value: str) -> str:
-    for prefix in _KNOWN_PREFIXES:
-        if value.startswith(prefix) and len(value) > len(prefix):
-            return value[len(prefix) :]
-    return value
-
-
-def _slugify(candidate: str) -> str:
-    return candidate.replace(" ", "_").strip(" ._")
 
 
 def _save_mask_image(
@@ -382,23 +331,11 @@ def _save_mask_image(
     override: str | None,
 ) -> Path:
     base = _derive_base_name(source, override)
-    mask_stem = _ensure_prefix("mask_", base)
+    mask_stem = apply_stage_prefix("segmented", base)
     destination = cfg.segmented_dir / f"{mask_stem}.png"
     destination.parent.mkdir(parents=True, exist_ok=True)
     mask_image.convert("L").save(destination)
     return destination
-
-
-def _load_image(source: Image.Image | str | Path, *, mode: str | None = None) -> Image.Image:
-    if isinstance(source, Image.Image):
-        image = source.copy()
-    else:
-        path = Path(source)
-        with Image.open(path) as opened:
-            image = opened.copy()
-    if mode is not None:
-        image = image.convert(mode)
-    return image
 
 
 def _default_data_dir() -> Path:
@@ -416,32 +353,25 @@ def _cli(argv: Sequence[str] | None = None) -> int:
         "--data-dir",
         type=Path,
         default=_default_data_dir(),
-        help="Root folder containing segmented/, skeletonized/, tmp/, signatures/ (default: ./data or $LEAFMINE_DATA_DIR).",
+        help="Root folder containing segmented/, skeletonized/, tmp/, logsig/ (default: ./data or $LEAFMINE_DATA_DIR).",
     )
     parser.add_argument(
         "--num-samples",
         type=int,
         default=256,
-        help="Resample each polyline to N points before computing signatures (default: 256).",
+        help="Resample each polyline to N points before computing log signatures (default: 256).",
     )
     parser.add_argument(
         "--depth",
         type=int,
         default=4,
-        help="iisignature truncation depth (default: 4).",
+        help="Log-signature truncation depth (default: 4).",
     )
     parser.add_argument(
-        "--directions",
-        nargs="+",
-        choices=list(DIRECTION_CHOICES),
-        default=list(DIRECTION_CHOICES),
-        help="Signature directions to compute per mask (default: forward reverse).",
-    )
-    parser.add_argument(
-        "--csv-prefix",
-        type=str,
-        default="batch",
-        help="Prefix for the timestamped CSV saved under data/signatures/ (default: batch).",
+        "--polyline-branch-threshold",
+        type=float,
+        default=0.0,
+        help="Length threshold (in px) for pruning skeleton branches before routing (default: 0).",
     )
     parser.add_argument(
         "--limit",
@@ -491,10 +421,12 @@ def _cli(argv: Sequence[str] | None = None) -> int:
     cfg = PipelineConfig(
         segmented_dir=segmented_dir,
         skeleton_dir=data_dir / "skeletonized",
-        polyline_dir=data_dir / "tmp",
-        signatures_dir=data_dir / "signatures",
-        signature_csv=data_dir / "signatures" / "signatures.csv",
-    ).with_timestamped_signature_csv(prefix=args.csv_prefix)
+        polyline_dir=data_dir / "polylines",
+        signatures_dir=data_dir / "logsig",
+        signature_csv=default_log_signature_csv_path(data_dir / "logsig"),
+        polyline_branch_threshold=args.polyline_branch_threshold,
+    )
+    print(f"Appending log-signature rows to {cfg.signature_csv}")
 
     skeleton_cfg = SkeletonizationConfig(
         white_threshold=args.skeleton_white_threshold,
@@ -514,18 +446,17 @@ def _cli(argv: Sequence[str] | None = None) -> int:
                 skeleton_config=skeleton_cfg,
                 num_samples=args.num_samples,
                 depth=args.depth,
-                direction=args.directions[0],
-                directions=tuple(args.directions),
             )
         except Exception as exc:  # pragma: no cover - CLI convenience
             print(f"[{idx}/{total}] Failed {mask_path.name}: {exc}", file=sys.stderr)
             return 1
 
         last_csv = result.signature_csv_path
-        print(f"[{idx}/{total}] {mask_path.name} -> {result.signature_csv_path.name}")
+        sample_name = result.signature.sample_filename or mask_path.name
+        print(f"[{idx}/{total}] {sample_name} -> CSV row {result.signature_csv_path.name}")
 
     destination = last_csv or cfg.signature_csv
-    print(f"Processed {total} mask(s). Signatures appended to {destination}.")
+    print(f"Processed {total} mask(s). Log-signature summary appended to {destination}.")
     return 0
 
 
