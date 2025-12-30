@@ -9,7 +9,16 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from .longest_component import EIGHT_NEIGHBOR_OFFSETS
+EIGHT_NEIGHBOR_OFFSETS: tuple[tuple[int, int], ...] = (
+    (-1, -1),
+    (-1, 0),
+    (-1, 1),
+    (0, -1),
+    (0, 1),
+    (1, -1),
+    (1, 0),
+    (1, 1),
+)
 
 
 @dataclass(slots=True)

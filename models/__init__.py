@@ -1,10 +1,5 @@
 """Model utilities for the leafmine signature pipeline."""
 
-from .longest_component import (
-    LongestPathResult,
-    export_longest_path,
-    extract_longest_path,
-)
 from .polyline_utils import (
     PolylineArtifacts,
     compute_polyline_artifacts,
@@ -14,7 +9,13 @@ from .polyline_utils import (
     save_polyline_json,
 )
 from .route import RouteEdgeVisit, RouteResult, compute_route
-from .signature import SignatureResult, signature_from_json, write_signature_csv
+from .signature import (
+    LogSignatureResult,
+    append_log_signature_csv,
+    default_log_signature_csv_path,
+    log_signature_from_json,
+    save_log_signature_npz,
+)
 from .skeleton_graph import (
     GraphEdge,
     GraphNode,
@@ -27,9 +28,6 @@ from .skeletonization import run_skeletonization
 
 __all__ = [
     "run_skeletonization",
-    "LongestPathResult",
-    "extract_longest_path",
-    "export_longest_path",
     "GraphNode",
     "GraphEdge",
     "SkeletonGraph",
@@ -45,7 +43,9 @@ __all__ = [
     "save_polyline_json",
     "compute_polyline_artifacts",
     "render_route_preview",
-    "SignatureResult",
-    "signature_from_json",
-    "write_signature_csv",
+    "LogSignatureResult",
+    "log_signature_from_json",
+    "save_log_signature_npz",
+    "append_log_signature_csv",
+    "default_log_signature_csv_path",
 ]

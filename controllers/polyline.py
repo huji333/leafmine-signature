@@ -10,6 +10,7 @@ from typing import Iterable
 from PIL import Image
 
 from models.graph_render import render_graph_preview
+from models.utils import canonical_sample_name, prefixed_name
 from models.polyline_utils import compute_polyline_artifacts, render_route_preview
 from models.route import RouteResult, compute_route
 from models.skeleton_graph import (
@@ -41,6 +42,7 @@ class GraphSession:
     branch_threshold: float
     polyline_dir: Path
     component_map: dict[int, int]
+    sample_base: str
 
 
 @dataclass(slots=True)
@@ -68,6 +70,14 @@ class RouteFlowResult:
     route_preview: Image.Image | None
 
 
+@dataclass(slots=True)
+class AutoRouteArtifacts:
+    highlight_path: Path
+    polyline_path: Path
+    graph_result: GraphPrepResult
+    route_result: RouteFlowResult
+
+
 def prepare_graph(
     skeleton_filename: str | Path,
     branch_threshold: float,
@@ -80,6 +90,7 @@ def prepare_graph(
     skeleton_path = _resolve_filename(skeleton_filename, cfg.skeleton_dir)
     branch_threshold = max(0.0, float(branch_threshold))
 
+    sample_base = canonical_sample_name(skeleton_path)
     graph = build_skeleton_graph(skeleton_path)
     pruned_graph = (
         prune_short_branches(graph, branch_threshold)
@@ -87,7 +98,8 @@ def prepare_graph(
         else graph
     )
 
-    graph_json_path = cfg.tmp_dir / f"{skeleton_path.stem}_graph.json"
+    graph_filename = prefixed_name("graph", sample_base, ".json")
+    graph_json_path = cfg.tmp_dir / graph_filename
     pruned_graph.save(graph_json_path)
 
     components = _connected_components(pruned_graph)
@@ -114,6 +126,8 @@ def prepare_graph(
         "node_count": len(pruned_graph.nodes),
         "edge_count": len(pruned_graph.edges),
         "leaf_nodes": len(leaf_nodes),
+        "sample_base": sample_base,
+        "segmented_filename": prefixed_name("segmented", sample_base, ".png"),
     }
 
     defaults = _default_start_goal(pruned_graph, components)
@@ -129,6 +143,7 @@ def prepare_graph(
         branch_threshold=branch_threshold,
         polyline_dir=cfg.polyline_dir,
         component_map=component_map,
+        sample_base=sample_base,
     )
 
     return GraphPrepResult(
@@ -217,9 +232,12 @@ def compute_route_flow(
         "start_node": start_node,
         "goal_node": goal_node,
         "resample_points": int(resample_points),
+        "sample_base": session.sample_base,
+        "segmented_filename": prefixed_name("segmented", session.sample_base, ".png"),
+        "skeleton_filename": session.skeleton_path.name,
     }
-    stem = session.skeleton_path.stem
-    polyline_path = session.polyline_dir / f"{stem}_route.json"
+    polyline_filename = prefixed_name("polyline", session.sample_base, ".json")
+    polyline_path = session.polyline_dir / polyline_filename
 
     artifacts = compute_polyline_artifacts(
         graph,
@@ -239,6 +257,54 @@ def compute_route_flow(
         polyline_payload=artifacts.payload or {},
         polyline_path=polyline_path,
         route_preview=route_preview,
+    )
+
+
+def auto_route_polyline(
+    skeleton_path: str | Path,
+    *,
+    resample_points: int,
+    branch_threshold: float = 0.0,
+    config: PolylineTabConfig | None = None,
+    highlight_dir: Path | None = None,
+) -> AutoRouteArtifacts:
+    """Compute a default route polyline using the first available start/goal pair."""
+
+    cfg = config or PolylineTabConfig()
+    cfg.ensure()
+
+    prep = prepare_graph(skeleton_path, branch_threshold, config=cfg)
+    start = prep.default_start
+    goal = prep.default_goal or start
+    if start is None:
+        raise ValueError("Unable to determine a default start node for the skeleton graph.")
+    if goal is None:
+        goal = start
+
+    route = compute_route_flow(
+        prep.session,
+        start_node=start,
+        goal_node=goal,
+        resample_points=resample_points,
+    )
+    if route.polyline_path is None:
+        raise RuntimeError("Route computation did not emit a polyline path.")
+
+    highlight_parent = highlight_dir or cfg.polyline_dir
+    highlight_parent.mkdir(parents=True, exist_ok=True)
+    highlight_path = highlight_parent / prefixed_name("route", prep.session.sample_base, ".png")
+
+    if route.route_preview is not None:
+        route.route_preview.save(highlight_path)
+    else:
+        with Image.open(prep.session.skeleton_path) as img:
+            img.convert("RGB").save(highlight_path)
+
+    return AutoRouteArtifacts(
+        highlight_path=highlight_path,
+        polyline_path=route.polyline_path,
+        graph_result=prep,
+        route_result=route,
     )
 
 
@@ -347,6 +413,8 @@ __all__ = [
     "GraphSession",
     "GraphPrepResult",
     "RouteFlowResult",
+    "AutoRouteArtifacts",
     "prepare_graph",
     "compute_route_flow",
+    "auto_route_polyline",
 ]

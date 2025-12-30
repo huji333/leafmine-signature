@@ -5,18 +5,21 @@ from pathlib import Path
 
 import gradio as gr
 from controllers.pipeline import PipelineConfig, run_pipeline_for_ui
-from models.signature import DIRECTION_CHOICES
+from models.signature import default_log_signature_csv_path
 from models.skeletonization import SkeletonizationConfig
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
-PIPELINE_CONFIG = PipelineConfig(
-    segmented_dir=DATA_DIR / "segmented",
-    skeleton_dir=DATA_DIR / "skeletonized",
-    polyline_dir=DATA_DIR / "tmp",
-    signatures_dir=DATA_DIR / "signatures",
-    signature_csv=DATA_DIR / "signatures" / "signatures.csv",
-)
 DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
+
+
+def _build_pipeline_config() -> PipelineConfig:
+    return PipelineConfig(
+        segmented_dir=DATA_DIR / "segmented",
+        skeleton_dir=DATA_DIR / "skeletonized",
+        polyline_dir=DATA_DIR / "polylines",
+        signatures_dir=DATA_DIR / "logsig",
+        signature_csv=default_log_signature_csv_path(DATA_DIR / "logsig"),
+    )
 
 
 def render() -> None:
@@ -24,8 +27,8 @@ def render() -> None:
 
     gr.Markdown(
         "Upload a pre-segmented binary mask (white mine on black background). "
-        "The pipeline skeletonizes it, extracts the longest path, overlays the "
-        "yellow polyline, and appends a path signature to the CSV."
+        "The pipeline skeletonizes it, extracts a route polyline, overlays the "
+        "yellow polyline, and stores a log-signature embedding."
     )
 
     with gr.Row():
@@ -53,11 +56,6 @@ def render() -> None:
                 maximum=6,
                 step=1,
             )
-            direction_input = gr.CheckboxGroup(
-                choices=list(DIRECTION_CHOICES),
-                value=list(DIRECTION_CHOICES),
-                label="Signature directions",
-            )
             run_button = gr.Button("Run Pipeline", variant="primary")
         with gr.Column(scale=1):
             highlight_preview = gr.Image(label="Longest Path Overlay")
@@ -71,7 +69,6 @@ def render() -> None:
             base_name_input,
             num_samples_input,
             depth_input,
-            direction_input,
         ],
         outputs=[highlight_preview, signature_preview, status_output],
         show_progress=True,
@@ -83,17 +80,16 @@ def _run_pipeline(
     base_name: str,
     num_samples: float,
     depth: float,
-    directions: list[str] | None,
 ):
     """Gradio callback that delegates to the controller layer."""
     try:
+        config = _build_pipeline_config()
         result = run_pipeline_for_ui(
             mask_file,
             base_name=base_name,
             num_samples=num_samples,
             depth=depth,
-            directions=directions,
-            config=PIPELINE_CONFIG,
+            config=config,
             skeleton_config=DEFAULT_SKELETON_CONFIG,
         )
     except ValueError as exc:

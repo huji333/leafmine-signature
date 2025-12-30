@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 
 from PIL import Image
 
 from .pipeline import PipelineConfig
+from models.utils import apply_stage_prefix, strip_prefix
 from models.skeletonization import (
     SkeletonizationConfig,
     run_skeletonization,
@@ -39,24 +41,24 @@ def process_mask(
     cfg.ensure_directories()
 
     mask_gray = mask.convert("L")
-    mask_path = _save_image(mask_gray, cfg.segmented_dir, "mask", original_name)
-    suffix = _mask_suffix(mask_path)
+    sample_base = _derive_sample_base(original_name)
+    mask_path = _save_stage_image(mask_gray, cfg.segmented_dir, "segmented", sample_base)
 
     artifacts = run_skeletonization(mask_gray, config=config)
     preprocessed = artifacts["preprocessed_mask"]
     skeleton = artifacts["skeleton_mask"]
 
-    preprocessed_path = _save_image(
+    preprocessed_path = _save_stage_image(
         preprocessed,
         cfg.segmented_dir,
         "preprocessed",
-        f"{suffix}.png",
+        sample_base,
     )
-    skeleton_path = _save_image(
+    skeleton_path = _save_stage_image(
         skeleton,
         cfg.skeleton_dir,
-        "skeleton",
-        f"{suffix}.png",
+        "skeletonized",
+        sample_base,
     )
 
     return SkeletonizationResult(
@@ -69,24 +71,23 @@ def process_mask(
     )
 
 
-def _save_image(
+def _save_stage_image(
     image: Image.Image,
     directory: Path,
-    prefix: str,
-    original_name: str,
+    stage: str,
+    sample_base: str,
 ) -> Path:
-    base_name = Path(original_name or "upload.png")
-    if base_name.suffix == "":
-        base_name = base_name.with_suffix(".png")
-    filename = f"{prefix}_{base_name.name}"
-    destination = directory / filename
+    stem = apply_stage_prefix(stage, sample_base)
+    destination = directory / f"{stem}.png"
     image.save(destination)
     return destination
 
 
-def _mask_suffix(mask_path: Path) -> str:
-    stem = mask_path.stem
-    return stem[len("mask_") :] if stem.startswith("mask_") else stem
+def _derive_sample_base(original_name: str) -> str:
+    stem = Path(original_name or "").stem.strip()
+    if not stem:
+        return datetime.now().strftime("%Y%m%d-%H%M%S")
+    return strip_prefix(stem)
 
 
 __all__ = ["SkeletonizationResult", "process_mask"]

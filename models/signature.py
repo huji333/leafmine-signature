@@ -1,4 +1,4 @@
-"""Signature helpers built on top of :mod:`iisignature` for quick experiments."""
+"""Log-signature helpers built on top of :mod:`iisignature`."""
 
 from __future__ import annotations
 
@@ -6,176 +6,225 @@ import argparse
 import csv
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
-from typing import Literal, Sequence
+from typing import Sequence
 
 import numpy as np
+from functools import lru_cache
 
-try:  # pragma: no cover - import guard keeps module importable sans dependency
+from .utils import canonical_sample_name, prefixed_name
+
+try:  # pragma: no cover - allow importing without optional dependency
     import iisignature
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise ModuleNotFoundError(
-        "iisignature is required for models.signature; add it to your environment."
+        "iisignature is required for models.signature; install it via `uv pip install iisignature`."
     ) from exc
 
-Direction = Literal["forward", "reverse"]
-DIRECTION_CHOICES: tuple[Direction, ...] = ("forward", "reverse")
+
+def default_log_signature_csv_path(
+    output_dir: Path | str = Path("data/logsig"),
+    *,
+    timestamp: datetime | None = None,
+) -> Path:
+    """Return a timestamped CSV path inside ``output_dir``.
+
+    Each call emits a new ``logsignatures_<timestamp>.csv`` file so downstream
+    tooling can keep per-run context unless a specific file override is passed.
+    """
+
+    base_dir = Path(output_dir)
+    stamp = (timestamp or datetime.now()).strftime("%Y%m%dT%H%M%S")
+    return base_dir / f"logsignatures_{stamp}.csv"
 
 
 @dataclass(slots=True)
-class SignatureResult:
-    """Container with signature vector and bookkeeping metadata."""
+class LogSignatureResult:
+    """Container storing the computed log signature and metadata."""
 
-    signature: np.ndarray
+    vector: np.ndarray
     depth: int
     num_samples: int
-    direction: Direction
-    source: Path
-    path_points: int
     path_length: float
-    start_xy: tuple[float, float]
+    resample_points: int
+    polyline_path: Path
+    npz_path: Path | None = None
+    sample_filename: str | None = None
 
     @property
     def dimension(self) -> int:
-        return int(self.signature.size)
+        return int(self.vector.size)
 
 
-def signature_from_json(
+@lru_cache(maxsize=None)
+def _prepared_logsigs(dimension: int, depth: int):
+    """Cache iisignature.prepare results per (dimension, depth)."""
+
+    return iisignature.prepare(int(dimension), int(depth))
+
+
+def log_signature_from_json(
     polyline_json: Path,
     *,
-    num_samples: int = 256,
     depth: int = 4,
-    direction: Direction = "forward",
-) -> SignatureResult:
-    """Load a polyline JSON file, normalize it, and compute its signature."""
+) -> LogSignatureResult:
+    """Load a resampled polyline JSON payload and compute its log signature."""
 
-    points = _load_polyline(polyline_json)
-    resampled, path_length = _resample_polyline(points, num_samples)
-    ordered = resampled if direction == "forward" else resampled[::-1]
-    start_xy = tuple(map(float, ordered[0]))
-    centered = ordered - ordered[0]
-    signature = _compute_signature(centered, depth)
-    return SignatureResult(
-        signature=signature,
-        depth=depth,
+    payload = _load_polyline_payload(polyline_json)
+    resampled = np.asarray(payload["resampled_polyline"], dtype=np.float64)
+    if resampled.ndim != 2 or resampled.shape[1] != 2:
+        raise ValueError(f"{polyline_json} has malformed resampled coordinates.")
+    vector = _compute_log_signature(resampled, depth)
+    num_samples = int(resampled.shape[0])
+    path_length = float(payload.get("path_length", float("nan")))
+    resample_points = int(payload.get("resample_points", num_samples))
+    sample_filename = _extract_sample_filename(payload, polyline_json)
+    return LogSignatureResult(
+        vector=vector,
+        depth=int(depth),
         num_samples=num_samples,
-        direction=direction,
-        source=polyline_json,
-        path_points=int(points.shape[0]),
         path_length=path_length,
-        start_xy=start_xy,
+        resample_points=resample_points,
+        polyline_path=polyline_json,
+        sample_filename=sample_filename,
     )
 
 
-def write_signature_csv(result: SignatureResult, output_path: Path) -> Path:
-    """Append the signature vector to a CSV file with human-friendly metadata."""
+def save_log_signature_npz(
+    result: LogSignatureResult,
+    destination: Path,
+) -> Path:
+    """Persist the vector + metadata to an NPZ file and store its path on ``result``."""
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
+    destination = _resolve_npz_destination(result, destination)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    np.savez_compressed(
+        destination,
+        vector=result.vector,
+        depth=result.depth,
+        num_samples=result.num_samples,
+        path_length=result.path_length,
+        resample_points=result.resample_points,
+        polyline=str(result.polyline_path),
+    )
+    result.npz_path = destination
+    return destination
+
+
+def append_log_signature_csv(result: LogSignatureResult, csv_path: Path) -> Path:
+    """Append a summary row for the result to ``csv_path``."""
+
+    csv_path.parent.mkdir(parents=True, exist_ok=True)
     header = [
-        "polyline",
+        "filename",
+        "polyline_json",
         "depth",
+        "dimension",
         "num_samples",
-        "signature_dim",
-        "path_points",
+        "resample_points",
         "path_length",
-        "start_x",
-        "start_y",
-    ] + [f"sig_{i}" for i in range(result.dimension)]
-
-    write_header = not output_path.exists()
-    with output_path.open("a", newline="") as handle:
+        "log_signature",
+    ]
+    needs_header = not csv_path.exists()
+    sample_filename = result.sample_filename or prefixed_name(
+        "segmented",
+        canonical_sample_name(result.polyline_path),
+        ".png",
+    )
+    vector_values = [float(value) for value in result.vector.ravel().tolist()]
+    signature_blob = json.dumps(vector_values, ensure_ascii=False)
+    with csv_path.open("a", newline="") as handle:
         writer = csv.writer(handle)
-        if write_header:
+        if needs_header:
             writer.writerow(header)
-        row = [
-            str(result.source),
-            result.depth,
-            result.num_samples,
-            result.dimension,
-            result.path_points,
-            f"{result.path_length:.3f}",
-            f"{result.start_xy[0]:.3f}",
-            f"{result.start_xy[1]:.3f}",
-        ] + [f"{value:.10f}" for value in result.signature]
-        writer.writerow(row)
-    return output_path
+        writer.writerow(
+            [
+                sample_filename,
+                str(result.polyline_path),
+                result.depth,
+                result.dimension,
+                result.num_samples,
+                result.resample_points,
+                f"{result.path_length:.6f}",
+                signature_blob,
+            ]
+        )
+    return csv_path
 
 
-def _load_polyline(polyline_json: Path) -> np.ndarray:
-    payload = json.loads(polyline_json.read_text())
-    if "polyline" not in payload:
-        raise ValueError(f"{polyline_json} is missing a 'polyline' key")
-    coords = np.asarray(payload["polyline"], dtype=np.float64)
-    if coords.ndim != 2 or coords.shape[1] != 2:
-        raise ValueError("Polyline must be shaped (N, 2).")
-    return coords
+def _extract_sample_filename(payload: dict[str, object], polyline_json: Path) -> str:
+    candidate = payload.get("segmented_filename")
+    if isinstance(candidate, str):
+        cleaned = candidate.strip()
+        if cleaned:
+            return cleaned
+    sample_base = payload.get("sample_base")
+    if isinstance(sample_base, str):
+        cleaned = sample_base.strip()
+        if cleaned:
+            return prefixed_name("segmented", cleaned, ".png")
+    return prefixed_name("segmented", canonical_sample_name(polyline_json), ".png")
 
 
-def _resample_polyline(points: np.ndarray, num_samples: int) -> tuple[np.ndarray, float]:
-    if num_samples < 2:
-        raise ValueError("Need at least two samples for a path.")
-    if points.shape[0] < 2:
-        raise ValueError("Polyline must contain at least two points.")
-
-    deltas = np.diff(points, axis=0)
-    segment_lengths = np.linalg.norm(deltas, axis=1)
-    cumulative = np.concatenate(([0.0], np.cumsum(segment_lengths)))
-    total_length = float(cumulative[-1])
-    if total_length == 0.0:
-        tiled = np.repeat(points[:1], num_samples, axis=0)
-        return tiled, total_length
-
-    target = np.linspace(0.0, total_length, num_samples)
-    x = np.interp(target, cumulative, points[:, 0])
-    y = np.interp(target, cumulative, points[:, 1])
-    resampled = np.stack((x, y), axis=1)
-    return resampled, total_length
-
-
-def _compute_signature(path: np.ndarray, depth: int) -> np.ndarray:
+def _compute_log_signature(points: np.ndarray, depth: int) -> np.ndarray:
     if depth < 1:
-        raise ValueError("Signature depth must be >= 1.")
-    return iisignature.sig(path.astype(np.float64, copy=False), depth)
+        raise ValueError("Log-signature depth must be >= 1.")
+    dimension = int(points.shape[1])
+    if dimension <= 0:
+        raise ValueError("Polyline points must have a positive dimension.")
+    if dimension < 2:
+        raise ValueError("iisignature requires polyline dimension >= 2.")
+    double_points = points.astype(np.float64, copy=False)
+    prepared = _prepared_logsigs(dimension, depth)
+    vector = iisignature.logsig(double_points, prepared)
+    return np.asarray(vector, dtype=np.float64)
+
+
+def _resolve_npz_destination(result: LogSignatureResult, destination: Path) -> Path:
+    destination = destination.expanduser()
+    if destination.suffix:
+        return destination
+    filename = f"{result.polyline_path.stem}_logsig_d{result.depth}.npz"
+    return destination / filename
+
+
+def _load_polyline_payload(polyline_json: Path) -> dict[str, object]:
+    payload = json.loads(polyline_json.read_text())
+    if "resampled_polyline" not in payload:
+        raise ValueError(
+            f"{polyline_json} is missing resampled polyline data; rerun the polyline generation step."
+        )
+    return payload
 
 
 def _cli(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Compute iisignature for a polyline JSON")
-    parser.add_argument("polyline", type=Path, help="Path to *_longest.json produced earlier")
-    parser.add_argument(
-        "--num-samples",
-        type=int,
-        default=256,
-        help="Resample the path to N equally spaced points (default: 256)",
-    )
+    parser = argparse.ArgumentParser(description="Compute log signature for a polyline JSON.")
+    parser.add_argument("polyline", type=Path, help="Path to *_route.json produced earlier.")
     parser.add_argument(
         "--depth",
         type=int,
         default=4,
-        help="iisignature truncation depth (default: 4)",
-    )
-    parser.add_argument(
-        "--direction",
-        choices=list(DIRECTION_CHOICES),
-        default="forward",
-        help="Process polyline in original ('forward') order or reversed.",
+        help="Log-signature depth (default: 4).",
     )
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path("data/signatures/signatures.csv"),
-        help="CSV destination (default: data/signatures/signatures.csv).",
+        default=Path("data/logsig"),
+        help="Output NPZ path or directory (default: data/logsig).",
+    )
+    parser.add_argument(
+        "--summary-csv",
+        type=Path,
+        default=default_log_signature_csv_path(),
+        help="Summary CSV destination (default: data/logsig/logsignatures_<timestamp>.csv).",
     )
     args = parser.parse_args(argv)
 
-    result = signature_from_json(
-        args.polyline,
-        num_samples=args.num_samples,
-        depth=args.depth,
-        direction=args.direction,
-    )
-
-    csv_path = write_signature_csv(result, args.output)
-    print(f"Appended signature (dim={result.dimension}) to {csv_path}")
+    result = log_signature_from_json(args.polyline, depth=args.depth)
+    npz_path = save_log_signature_npz(result, args.output)
+    append_log_signature_csv(result, args.summary_csv)
+    print(f"Saved log signature (dim={result.dimension}) to {npz_path}")
     return 0
 
 
@@ -184,7 +233,8 @@ if __name__ == "__main__":  # pragma: no cover
 
 
 __all__ = [
-    "SignatureResult",
-    "signature_from_json",
-    "write_signature_csv",
+    "LogSignatureResult",
+    "append_log_signature_csv",
+    "log_signature_from_json",
+    "save_log_signature_npz",
 ]

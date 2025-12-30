@@ -4,7 +4,7 @@ import os
 
 import gradio as gr
 
-from views.tabs import line_extension, pipeline, polyline, skeletonization
+from views.tabs import pipeline, polyline, skeletonization
 
 
 def main() -> None:
@@ -14,8 +14,6 @@ def main() -> None:
                 pipeline.render()
             with gr.Tab("Skeletonization"):
                 skeletonization.render()
-            with gr.Tab("Line Extension"):
-                line_extension.render()
             with gr.Tab("Polyline Graph"):
                 polyline.render()
 
