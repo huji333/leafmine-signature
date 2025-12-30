@@ -1,103 +1,131 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
+from functools import partial
 
 import gradio as gr
-from PIL import Image
 
-from controllers.pipeline import PipelineConfig
-from controllers.skeletonization import process_mask
+from controllers.skeletonization import process_mask, resolve_mask_source
+from controllers.data_paths import DataPaths
 from models.skeletonization import SkeletonizationConfig
+from views.components import file_selector
+from views.config import DataBrowser
+from PIL import Image, ImageFilter, ImageOps
+import numpy as np
+from skimage.measure import label
 
-DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
-PIPELINE_CONFIG = PipelineConfig(
-    segmented_dir=DATA_DIR / "segmented",
-    skeleton_dir=DATA_DIR / "skeletonized",
-    polyline_dir=DATA_DIR / "tmp",
-    signatures_dir=DATA_DIR / "signatures",
-    signature_csv=DATA_DIR / "signatures" / "signatures.csv",
-)
 DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
 
-def render() -> None:
-    """Render the skeletonization tab inside a gr.Tab context."""
+def render(
+    *,
+    data_paths: DataPaths | None = None,
+    data_browser: DataBrowser | None = None,
+) -> None:
+    """Upload or reuse segmented masks and inspect the resulting skeleton."""
+
+    cfg = data_paths or DataPaths.from_data_dir()
+    browser = data_browser or DataBrowser(cfg)
 
     gr.Markdown(
-        "Upload a **segmentation mask** (white mine on black background). "
-        "Running the step will store the uploaded mask under `data/segmented/` "
-        "and write the skeletonized result to `data/skeletonized/`."
+        "Upload a **segmented binary mask** or point to an existing "
+        "`data/segmented/segmented_*.png`. Uploaded files are persisted with the "
+        "canonical `segmented_` prefix automatically. Use the controls below to tune "
+        "preprocessing before moving on to routing/log-signatures."
     )
-    segmented_input = gr.File(
-        label="Segmentation Mask",
+
+    upload_input = gr.File(
+        label="Upload segmented mask",
         file_types=["image"],
         file_count="single",
     )
-    with gr.Accordion("Skeletonization Settings", open=False):
-        smooth_radius_input = gr.Slider(
-            minimum=0,
-            maximum=10,
-            value=DEFAULT_SKELETON_CONFIG.smooth_radius,
-            step=1,
-            label="Closing Radius (smooth rough edges)",
+    with gr.Row():
+        existing_selector, _ = file_selector(
+            label="Or pick an existing segmented filename",
+            choices_provider=browser.segmented,
+            refresh_label="Refresh segmented list",
         )
-        hole_area_input = gr.Slider(
-            minimum=0,
-            maximum=2000,
-            value=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
-            step=10,
-            label="Hole Fill Area (px^2) - fill black holes up to this size",
-        )
-        erode_radius_input = gr.Slider(
-            minimum=0,
-            maximum=5,
-            value=DEFAULT_SKELETON_CONFIG.erode_radius,
-            step=1,
-            label="Erosion Radius (separate touching parts)",
-        )
-    run_button = gr.Button("Skeletonize", variant="primary")
+
+    gr.Markdown("### Skeletonization Settings")
+    smooth_radius_input = gr.Slider(
+        minimum=0,
+        maximum=10,
+        value=DEFAULT_SKELETON_CONFIG.smooth_radius,
+        step=1,
+        label="Closing Radius (smooth rough edges)",
+    )
+    hole_area_input = gr.Slider(
+        minimum=0,
+        maximum=2000,
+        value=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
+        step=10,
+        label="Hole Fill Area (px^2) - fill black holes up to this size",
+    )
+    erode_radius_input = gr.Slider(
+        minimum=0,
+        maximum=5,
+        value=DEFAULT_SKELETON_CONFIG.erode_radius,
+        step=1,
+        label="Erosion Radius (separate touching parts)",
+    )
+
+    run_button = gr.Button("Run skeletonization", variant="primary")
+
+    components_output = gr.Markdown("")
 
     with gr.Row():
-        segmented_preview = gr.Image(label="Stored Mask Preview")
-        preprocessed_preview = gr.Image(label="Preprocessed Mask")
-        skeleton_preview = gr.Image(label="Skeleton Preview")
+        mask_preview = gr.Image(label="Stored Mask", type="pil")
+        skeleton_overlay_preview = gr.Image(
+            label="Skeleton Overlay",
+            type="pil",
+        )
+
+    status_output = gr.Markdown("")
+
+    run_inputs = [
+        existing_selector,
+        upload_input,
+        smooth_radius_input,
+        hole_area_input,
+        erode_radius_input,
+    ]
+    run_outputs = [
+        components_output,
+        mask_preview,
+        skeleton_overlay_preview,
+        status_output,
+        existing_selector,
+    ]
 
     run_button.click(
-        fn=_handle_skeletonization,
-        inputs=[
-            segmented_input,
-            smooth_radius_input,
-            hole_area_input,
-            erode_radius_input,
-        ],
-        outputs=[
-            segmented_preview,
-            preprocessed_preview,
-            skeleton_preview,
-        ],
+        fn=partial(_handle_skeletonization, cfg, browser),
+        inputs=run_inputs,
+        outputs=run_outputs,
         show_progress=True,
     )
+    # file_selector already wires refresh behavior; no extra click handler needed.
 
 
 def _handle_skeletonization(
-    file_data: str | None,
+    data_paths: DataPaths,
+    data_browser: DataBrowser,
+    selected_filename: str | None,
+    uploaded_file: str | None,
     smooth_radius: float | int,
     hole_area: float | int,
     erode_radius: float | int,
 ):
-    """Gradio callback to persist inputs, run skeletonize, and persist outputs."""
+    """Persist the mask if needed, run skeletonization, and surface diagnostics."""
 
-    if file_data is None:
-        raise gr.Error("Please upload a mask image before running skeletonization.")
+    data_paths.ensure_directories()
+    try:
+        mask_image, source_name = resolve_mask_source(
+            data_paths,
+            uploaded_file,
+            selected_filename,
+        )
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
 
-    PIPELINE_CONFIG.ensure_directories()
-
-    file_path = Path(file_data)
-    upload_name = file_path.name
-
-    with Image.open(file_path) as uploaded_image:
-        segmented_image = uploaded_image.convert("L")
     config = SkeletonizationConfig(
         smooth_radius=int(smooth_radius),
         hole_area_threshold=int(hole_area),
@@ -106,18 +134,67 @@ def _handle_skeletonization(
 
     try:
         result = process_mask(
-            segmented_image,
-            original_name=upload_name,
-            pipeline_config=PIPELINE_CONFIG,
+            mask_image,
+            original_name=source_name,
+            data_paths=data_paths,
             config=config,
         )
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
+    overlay = _render_skeleton_overlay(result.mask_image, result.skeleton_image)
+    component_msg = _summarize_components(result.skeleton_image)
+    status = (
+        f"Saved `{result.mask_path.name}` -> `{result.skeleton_path.name}` "
+        f"(closing={config.smooth_radius}, hole<={config.hole_area_threshold}, "
+        f"erode={config.erode_radius})."
+    )
+    dropdown_update = gr.update(
+        choices=data_browser.segmented(),
+        value=result.mask_path.name,
+    )
+
     return (
+        component_msg,
         result.mask_image,
-        result.preprocessed_image,
-        result.skeleton_image,
+        overlay,
+        status,
+        dropdown_update,
+    )
+
+
+def _render_skeleton_overlay(mask_image: Image.Image, skeleton_image: Image.Image) -> Image.Image:
+    """Overlay a thickened skeleton on the mask for quick QA."""
+
+    base = Image.new("RGBA", mask_image.size, (0, 0, 0, 255))
+
+    mask_l = ImageOps.autocontrast(mask_image)
+    mask_alpha = mask_l.point(lambda value: int(180 if value > 0 else 0))
+    mask_overlay = Image.new("RGBA", mask_image.size, (180, 180, 180, 0))
+    mask_overlay.putalpha(mask_alpha)
+    combined = Image.alpha_composite(base, mask_overlay)
+
+    thick = skeleton_image.filter(ImageFilter.MaxFilter(size=5))
+    skeleton_alpha = thick.point(lambda value: 255 if value > 0 else 0)
+    skeleton_overlay = Image.new("RGBA", mask_image.size, (255, 64, 64, 0))
+    skeleton_overlay.putalpha(skeleton_alpha)
+    combined = Image.alpha_composite(combined, skeleton_overlay)
+
+    return combined.convert("RGB")
+
+
+def _summarize_components(skeleton_image: Image.Image) -> str:
+    binary = np.asarray(skeleton_image, dtype=np.uint8) > 0
+    if not binary.any():
+        return "#### Connected components: 0  \n(no skeleton pixels detected)"
+
+    labeled = label(binary, connectivity=2)
+    components = int(labeled.max())
+    if components <= 1:
+        return "#### Connected components: 1  \n(single continuous skeleton)"
+    return (
+        f"### ⚠️ Connected components: {components}\n"
+        "Multiple disjoint branches detected — consider easing preprocessing."
     )
 
 

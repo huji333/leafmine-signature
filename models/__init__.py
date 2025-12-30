@@ -14,7 +14,6 @@ from .signature import (
     append_log_signature_csv,
     default_log_signature_csv_path,
     log_signature_from_json,
-    save_log_signature_npz,
 )
 from .skeleton_graph import (
     GraphEdge,
@@ -22,7 +21,6 @@ from .skeleton_graph import (
     SkeletonGraph,
     build_skeleton_graph,
     prune_short_branches,
-    write_skeleton_graph,
 )
 from .skeletonization import run_skeletonization
 
@@ -32,7 +30,6 @@ __all__ = [
     "GraphEdge",
     "SkeletonGraph",
     "build_skeleton_graph",
-    "write_skeleton_graph",
     "prune_short_branches",
     "RouteEdgeVisit",
     "RouteResult",
@@ -45,7 +42,6 @@ __all__ = [
     "render_route_preview",
     "LogSignatureResult",
     "log_signature_from_json",
-    "save_log_signature_npz",
     "append_log_signature_csv",
     "default_log_signature_csv_path",
 ]

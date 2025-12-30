@@ -1,37 +1,48 @@
-"""Controller helpers for skeleton graph exploration + routing."""
+"""Graph preparation helpers for skeleton routing workflows."""
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
 from PIL import Image
 
+from controllers.artifacts import resolve_segmented_mask_path
+from controllers.data_paths import DataPaths
 from models.graph_render import render_graph_preview
-from models.utils import canonical_sample_name, prefixed_name
-from models.polyline_utils import compute_polyline_artifacts, render_route_preview
-from models.route import RouteResult, compute_route
 from models.skeleton_graph import (
     SkeletonGraph,
     build_skeleton_graph,
     prune_short_branches,
 )
+from models.utils import canonical_sample_name, load_image, prefixed_name
 
 
 @dataclass(slots=True)
 class PolylineTabConfig:
-    """Filesystem layout for the polyline exploration tab."""
+    """Directories backing the polyline tab workflow."""
 
     skeleton_dir: Path = Path("data/skeletonized")
-    tmp_dir: Path = Path("data/tmp")
+    graph_dir: Path = Path("data/graphs")
     polyline_dir: Path = Path("data/polylines")
+    segmented_dir: Path | None = Path("data/segmented")
 
     def ensure(self) -> None:
         self.skeleton_dir.mkdir(parents=True, exist_ok=True)
-        self.tmp_dir.mkdir(parents=True, exist_ok=True)
+        self.graph_dir.mkdir(parents=True, exist_ok=True)
         self.polyline_dir.mkdir(parents=True, exist_ok=True)
+        if self.segmented_dir is not None:
+            self.segmented_dir.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def from_data_paths(cls, data_paths: DataPaths) -> "PolylineTabConfig":
+        return cls(
+            skeleton_dir=data_paths.skeleton_dir,
+            graph_dir=data_paths.graph_dir,
+            polyline_dir=data_paths.polyline_dir,
+            segmented_dir=data_paths.segmented_dir,
+        )
 
 
 @dataclass(slots=True)
@@ -48,6 +59,7 @@ class GraphSession:
 @dataclass(slots=True)
 class GraphPrepResult:
     skeleton_image: Image.Image
+    segmented_image: Image.Image | None
     pruned_overlay: Image.Image
     graph_payload: dict[str, object]
     graph_json_path: Path
@@ -57,25 +69,6 @@ class GraphPrepResult:
     default_goal: int | None
     status_message: str
     session: GraphSession
-
-
-@dataclass(slots=True)
-class RouteFlowResult:
-    route_payload: dict[str, object]
-    node_path: list[dict[str, int]]
-    message: str
-    result: RouteResult
-    polyline_payload: dict[str, object]
-    polyline_path: Path | None
-    route_preview: Image.Image | None
-
-
-@dataclass(slots=True)
-class AutoRouteArtifacts:
-    highlight_path: Path
-    polyline_path: Path
-    graph_result: GraphPrepResult
-    route_result: RouteFlowResult
 
 
 def prepare_graph(
@@ -99,7 +92,8 @@ def prepare_graph(
     )
 
     graph_filename = prefixed_name("graph", sample_base, ".json")
-    graph_json_path = cfg.tmp_dir / graph_filename
+    graph_json_path = cfg.graph_dir / graph_filename
+    graph_payload = pruned_graph.to_payload()
     pruned_graph.save(graph_json_path)
 
     components = _connected_components(pruned_graph)
@@ -114,11 +108,10 @@ def prepare_graph(
         skeleton_path,
         annotate_node_ids=leaf_ids,
     )
+    segmented_preview = _load_segmented_preview(sample_base, skeleton_path, cfg.segmented_dir)
     short_edges = _short_edge_summary(pruned_graph, leaf_ids=leaf_ids)
 
-    payload = json.loads(graph_json_path.read_text())
-    if not isinstance(payload, dict):
-        payload = {"graph": payload}
+    payload = {**graph_payload}
     payload["metadata"] = {
         "skeleton_png": str(skeleton_path),
         "graph_json": str(graph_json_path),
@@ -148,6 +141,7 @@ def prepare_graph(
 
     return GraphPrepResult(
         skeleton_image=skeleton_image,
+        segmented_image=segmented_preview,
         pruned_overlay=overlay,
         graph_payload=payload,
         graph_json_path=graph_json_path,
@@ -157,154 +151,6 @@ def prepare_graph(
         default_goal=defaults[1],
         status_message=message,
         session=session,
-    )
-
-
-def compute_route_flow(
-    session: GraphSession | None,
-    start_node: int,
-    goal_node: int,
-    *,
-    resample_points: int,
-) -> RouteFlowResult:
-    if session is None:
-        raise ValueError("Run the graph preparation step first.")
-
-    graph = session.graph
-
-    if start_node not in graph.nodes:
-        raise ValueError(f"Start node {start_node} is not present in the graph.")
-    if goal_node not in graph.nodes:
-        raise ValueError(f"Goal node {goal_node} is not present in the graph.")
-
-    comp_map = session.component_map
-    start_comp = comp_map.get(start_node)
-    goal_comp = comp_map.get(goal_node)
-    if start_comp is None or goal_comp is None:
-        raise ValueError("Could not determine connected components for the selected nodes.")
-    if start_comp != goal_comp:
-        raise ValueError(
-            f"Start node {start_node} (component {start_comp}) and goal node {goal_node} "
-            f"(component {goal_comp}) are disconnected. Pick nodes within the same component."
-        )
-
-    result = compute_route(graph, start_node, goal_node)
-    duplicated_edges = {
-        str(edge_id): count for edge_id, count in sorted(result.duplicated_edges.items())
-    }
-
-    route_payload = {
-        "start": result.start,
-        "goal": result.goal,
-        "total_length": round(result.total_length, 3),
-        "edge_traversals": len(result.visits),
-        "duplicated_edges": duplicated_edges,
-        "graph_json": str(session.graph_json_path),
-        "branch_threshold": session.branch_threshold,
-        "visits": [
-            {
-                "edge_id": visit.edge_id,
-                "direction": "forward" if visit.direction >= 0 else "reverse",
-            }
-            for visit in result.visits
-        ],
-    }
-
-    node_path_ids = result.node_sequence(graph)
-    node_path = [
-        {
-            "node_id": node_id,
-            "x": graph.nodes[node_id].x,
-            "y": graph.nodes[node_id].y,
-        }
-        for node_id in node_path_ids
-    ]
-
-    duplicates = sum(result.duplicated_edges.values())
-    message = (
-        f"Route covers {len(result.visits)} edge traversals "
-        f"(duplicates: {duplicates})."
-    )
-
-    metadata = {
-        "graph_json": str(session.graph_json_path),
-        "branch_threshold": session.branch_threshold,
-        "start_node": start_node,
-        "goal_node": goal_node,
-        "resample_points": int(resample_points),
-        "sample_base": session.sample_base,
-        "segmented_filename": prefixed_name("segmented", session.sample_base, ".png"),
-        "skeleton_filename": session.skeleton_path.name,
-    }
-    polyline_filename = prefixed_name("polyline", session.sample_base, ".json")
-    polyline_path = session.polyline_dir / polyline_filename
-
-    artifacts = compute_polyline_artifacts(
-        graph,
-        result,
-        resample_points=resample_points,
-        metadata=metadata,
-        output_path=polyline_path,
-    )
-
-    route_preview = render_route_preview(session.skeleton_path, artifacts.polyline)
-
-    return RouteFlowResult(
-        route_payload=route_payload,
-        node_path=node_path,
-        message=message,
-        result=result,
-        polyline_payload=artifacts.payload or {},
-        polyline_path=polyline_path,
-        route_preview=route_preview,
-    )
-
-
-def auto_route_polyline(
-    skeleton_path: str | Path,
-    *,
-    resample_points: int,
-    branch_threshold: float = 0.0,
-    config: PolylineTabConfig | None = None,
-    highlight_dir: Path | None = None,
-) -> AutoRouteArtifacts:
-    """Compute a default route polyline using the first available start/goal pair."""
-
-    cfg = config or PolylineTabConfig()
-    cfg.ensure()
-
-    prep = prepare_graph(skeleton_path, branch_threshold, config=cfg)
-    start = prep.default_start
-    goal = prep.default_goal or start
-    if start is None:
-        raise ValueError("Unable to determine a default start node for the skeleton graph.")
-    if goal is None:
-        goal = start
-
-    route = compute_route_flow(
-        prep.session,
-        start_node=start,
-        goal_node=goal,
-        resample_points=resample_points,
-    )
-    if route.polyline_path is None:
-        raise RuntimeError("Route computation did not emit a polyline path.")
-
-    highlight_parent = highlight_dir or cfg.polyline_dir
-    highlight_parent.mkdir(parents=True, exist_ok=True)
-    highlight_path = highlight_parent / prefixed_name("route", prep.session.sample_base, ".png")
-
-    if route.route_preview is not None:
-        route.route_preview.save(highlight_path)
-    else:
-        with Image.open(prep.session.skeleton_path) as img:
-            img.convert("RGB").save(highlight_path)
-
-    return AutoRouteArtifacts(
-        highlight_path=highlight_path,
-        polyline_path=route.polyline_path,
-        graph_result=prep,
-        route_result=route,
     )
 
 
@@ -391,6 +237,28 @@ def _connected_components(graph: SkeletonGraph) -> list[set[int]]:
     return components
 
 
+def _load_segmented_preview(
+    sample_base: str,
+    skeleton_path: Path,
+    segmented_dir: Path | None,
+) -> Image.Image | None:
+    suffix = skeleton_path.suffix or ".png"
+    skeleton_dir = skeleton_path.parent
+    search_dirs = [
+        segmented_dir,
+        skeleton_dir,
+        skeleton_dir.parent / "segmented",
+    ]
+    candidate = resolve_segmented_mask_path(
+        sample_base,
+        search_dirs,
+        default_suffix=suffix,
+    )
+    if candidate is None:
+        return None
+    return load_image(candidate, mode="RGB")
+
+
 def _render_images(
     graph: SkeletonGraph,
     skeleton_path: Path,
@@ -409,12 +277,8 @@ def _render_images(
 
 
 __all__ = [
-    "PolylineTabConfig",
-    "GraphSession",
     "GraphPrepResult",
-    "RouteFlowResult",
-    "AutoRouteArtifacts",
+    "GraphSession",
+    "PolylineTabConfig",
     "prepare_graph",
-    "compute_route_flow",
-    "auto_route_polyline",
 ]

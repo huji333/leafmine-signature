@@ -1,45 +1,50 @@
 from __future__ import annotations
 
-import os
-from pathlib import Path
-from typing import Any
-
 import gradio as gr
 
-from controllers.polyline import (
-    GraphPrepResult,
+from controllers.polyline_graph import (
     GraphSession,
     PolylineTabConfig,
-    RouteFlowResult,
-    compute_route_flow,
     prepare_graph,
 )
-
-DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
-SKELETON_DIR = DATA_DIR / "skeletonized"
-TMP_DIR = DATA_DIR / "tmp"
-
-TAB_CONFIG = PolylineTabConfig(skeleton_dir=SKELETON_DIR, tmp_dir=TMP_DIR)
+from controllers.polyline_route import compute_route_flow
+from controllers.data_paths import DataPaths
+from views.components import file_selector
+from views.config import DataBrowser
 
 
-def render() -> None:
+def render(
+    *,
+    data_paths: DataPaths | None = None,
+    data_browser: DataBrowser | None = None,
+) -> None:
     gr.Markdown(
-        "Load a skeleton PNG, prune tiny branches, inspect the resulting graph, "
-        "and compute an edge traversal order by specifying start / goal nodes."
+        "Load a skeleton PNG from `data/skeletonized/`, prune tiny branches, "
+        "inspect the resulting graph, and compute an edge traversal order. "
+        "You can also type an absolute path if the file lives elsewhere."
     )
 
-    skeleton_input = gr.Textbox(
-        label="Skeleton filename",
-        placeholder="skeleton_YYYYMMDD-HHMMSS.png",
-        info="Path under data/skeletonized/ (absolute paths also accepted).",
+    cfg = data_paths or DataPaths.from_data_dir()
+    browser = data_browser or DataBrowser(cfg)
+    tab_config = PolylineTabConfig(
+        skeleton_dir=cfg.skeleton_dir,
+        graph_dir=cfg.graph_dir,
+        polyline_dir=cfg.polyline_dir,
+        segmented_dir=cfg.segmented_dir,
     )
+
+    with gr.Row():
+        skeleton_input, _ = file_selector(
+            label="Skeleton filename",
+            choices_provider=browser.skeletonized,
+            refresh_label="Refresh skeleton list",
+        )
     branch_threshold = gr.Slider(
         label="Branch/loop pruning threshold (px)",
         value=100.0,
         minimum=0.0,
-        maximum=200.0,
+        maximum=300.0,
         step=1.0,
-        info="Remove degree-1 branches or micro loops shorter than this length (0 disables pruning).",
     )
     build_button = gr.Button("Build Skeleton Graph", variant="primary")
 
@@ -47,7 +52,7 @@ def render() -> None:
 
     status_markdown = gr.Markdown("")
     with gr.Row():
-        skeleton_preview = gr.Image(label="Original Skeleton")
+        skeleton_preview = gr.Image(label="Segmented Mask")
         pruned_preview = gr.Image(label="Pruned Overlay")
 
     with gr.Accordion("Graph JSON", open=False):
@@ -78,17 +83,19 @@ def render() -> None:
     )
 
     route_button = gr.Button("Compute Route", variant="primary")
+    route_status = gr.Markdown("")
+    route_preview = gr.Image(label="Route Preview (blue→red gradient)")
     route_json = gr.JSON(label="Route summary")
     node_path_json = gr.JSON(label="Node sequence")
-    route_status = gr.Markdown("")
-    route_preview = gr.Image(label="Route Preview")
     polyline_path_box = gr.Textbox(
         label="Saved polyline JSON",
         interactive=False,
     )
 
     build_button.click(
-        fn=_handle_build_graph,
+        fn=lambda filename, threshold: _handle_build_graph(
+            tab_config, filename, threshold
+        ),
         inputs=[skeleton_input, branch_threshold],
         outputs=[
             skeleton_preview,
@@ -112,38 +119,19 @@ def render() -> None:
 
 
 def _handle_build_graph(
+    tab_config: PolylineTabConfig,
     filename: str | None,
     threshold: float | None,
-) -> tuple[Any, ...]:
+) -> tuple:
     if not filename:
         raise gr.Error("Enter the skeleton filename first.")
     branch_threshold = float(threshold or 0.0)
-
     try:
-        result = prepare_graph(filename, branch_threshold, config=TAB_CONFIG)
-    except FileNotFoundError as exc:
-        raise gr.Error(str(exc)) from exc
-    except ValueError as exc:
+        result = prepare_graph(filename, branch_threshold, config=tab_config)
+    except (FileNotFoundError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
 
-    short_edge_rows = [
-        [edge["edge_id"], edge["u"], edge["v"], edge["length"]]
-        for edge in result.short_edges
-    ]
-
-    start_value = result.default_start if result.default_start is not None else None
-    goal_value = result.default_goal if result.default_goal is not None else None
-
-    return (
-        result.skeleton_image,
-        result.pruned_overlay,
-        result.graph_payload,
-        short_edge_rows,
-        start_value,
-        goal_value,
-        result.session,
-        result.status_message,
-    )
+    return _graph_view_payload(result)
 
 
 def _handle_compute_route(
@@ -151,7 +139,7 @@ def _handle_compute_route(
     start_value: float | None,
     goal_value: float | None,
     resample_points: float,
-) -> tuple[Any, Any, Any, Any, Any]:
+) -> tuple:
     if session is None:
         raise gr.Error("Build the graph first.")
     try:
@@ -171,6 +159,31 @@ def _handle_compute_route(
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
+    return _route_view_payload(result)
+
+
+def _graph_view_payload(result):
+    preview = result.segmented_image or result.skeleton_image
+    short_edge_rows = [
+        [edge["edge_id"], edge["u"], edge["v"], edge["length"]]
+        for edge in result.short_edges
+    ]
+    start_value = result.default_start if result.default_start is not None else None
+    goal_value = result.default_goal if result.default_goal is not None else None
+
+    return (
+        preview,
+        result.pruned_overlay,
+        result.graph_payload,
+        short_edge_rows,
+        start_value,
+        goal_value,
+        result.session,
+        result.status_message,
+    )
+
+
+def _route_view_payload(result):
     return (
         result.route_payload,
         result.node_path,
