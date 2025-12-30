@@ -10,6 +10,7 @@ dependencies = [
     "Pillow>=10.4.0",
     "scikit-image>=0.24.0",
     "iisignature>=0.24",
+    "ruff>=0.14.1,<0.15",
 ]
 
 [project.scripts]
@@ -21,6 +22,14 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["views", "models", "controllers"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["controllers", "models", "views"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]
 
 [tool.uv.extra-build-dependencies]
 iisignature = ["numpy"]

@@ -40,10 +40,11 @@ ifneq ($(BUILD),)
 	$(MAKE) build
 endif
 	docker run --rm $(RUN_PLATFORM_FLAG) \
+		-e UV_CACHE_DIR=.uv-cache \
 		-v $(CURDIR):/app \
 		-w /app \
 		$(IMAGE) \
-		uv run --frozen --no-sync ruff check .
+		uv run --frozen ruff check .
 
 remove_data:
 	@mkdir -p $(DATA_DIR)

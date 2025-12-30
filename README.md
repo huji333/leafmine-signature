@@ -21,3 +21,8 @@ The **Skeletonize Mask** tab lets you upload a fresh segmented mine or select an
 ## Batch Signatures In-UI
 
 Use the **Signatures** tab to recompute log signatures for any subset of `data/polylines/*.json`. All polylines are selected by default—uncheck any you want to skip, adjust depth, and each run appends rows to its own timestamped CSV while showing a preview of the latest entries.
+
+## Development
+
+- `UV_CACHE_DIR=.uv-cache uv run --frozen ruff check .` lints the repository, automatically syncing the virtualenv if missing while keeping downloads inside the repo.
+- `UV_CACHE_DIR=.uv-cache uv run --frozen ruff check . --fix` auto-applies trivial fixes (matches `make lint` inside the container).
