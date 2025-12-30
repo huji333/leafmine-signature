@@ -45,7 +45,6 @@ class LogSignatureResult:
 
     vector: np.ndarray
     depth: int
-    num_samples: int
     path_length: float
     resample_points: int
     polyline_path: Path
@@ -76,14 +75,12 @@ def log_signature_from_json(
     if resampled.ndim != 2 or resampled.shape[1] != 2:
         raise ValueError(f"{polyline_json} has malformed resampled coordinates.")
     vector = _compute_log_signature(resampled, depth)
-    num_samples = int(resampled.shape[0])
     path_length = float(payload.get("path_length", float("nan")))
-    resample_points = int(payload.get("resample_points", num_samples))
+    resample_points = int(payload.get("resample_points", int(resampled.shape[0])))
     sample_filename = _extract_sample_filename(payload, polyline_json)
     return LogSignatureResult(
         vector=vector,
         depth=int(depth),
-        num_samples=num_samples,
         path_length=path_length,
         resample_points=resample_points,
         polyline_path=polyline_json,
@@ -103,7 +100,6 @@ def save_log_signature_npz(
         destination,
         vector=result.vector,
         depth=result.depth,
-        num_samples=result.num_samples,
         path_length=result.path_length,
         resample_points=result.resample_points,
         polyline=str(result.polyline_path),
@@ -121,7 +117,6 @@ def append_log_signature_csv(result: LogSignatureResult, csv_path: Path) -> Path
         "polyline_json",
         "depth",
         "dimension",
-        "num_samples",
         "resample_points",
         "path_length",
         "log_signature",
@@ -144,7 +139,6 @@ def append_log_signature_csv(result: LogSignatureResult, csv_path: Path) -> Path
                 str(result.polyline_path),
                 result.depth,
                 result.dimension,
-                result.num_samples,
                 result.resample_points,
                 f"{result.path_length:.6f}",
                 signature_blob,

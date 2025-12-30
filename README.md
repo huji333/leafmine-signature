@@ -19,3 +19,11 @@ Artifacts land under `data/*` following the usual `segmented → skeletonized �
 ## Analyze Existing Polylines
 
 `make analyze_polylines` scans `data/polylines/*.json` and appends new rows to a timestamped CSV under `data/logsig/logsignatures_<timestamp>.csv`. Limit or retarget the run with `POLYLINE_ARGS` (e.g., `POLYLINE_ARGS="--depth 5 foo.json"` or `POLYLINE_ARGS="--overwrite"`).
+
+## Skeletonize Masks Quickly
+
+The **Skeletonize Mask** tab lets you upload a fresh segmented mine or select an existing `segmented_*.png` from `data/segmented/`. Every upload is persisted with the canonical prefix, the preview thickens the skeleton overlay for quick QA, and the tab flags multi-component skeletons before you move on to routing.
+
+## Batch Signatures In-UI
+
+Use the **Signatures** tab to recompute log signatures for any subset of `data/polylines/*.json`. All polylines are selected by default—uncheck any you want to skip, adjust depth, and the tab will append rows to the same CSV that `make analyze_polylines` writes while showing a live preview of the latest entries.

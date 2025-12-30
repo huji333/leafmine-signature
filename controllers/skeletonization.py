@@ -21,10 +21,8 @@ class SkeletonizationResult:
     """Artifacts emitted by a skeletonization run."""
 
     mask_image: Image.Image
-    preprocessed_image: Image.Image
     skeleton_image: Image.Image
     mask_path: Path
-    preprocessed_path: Path
     skeleton_path: Path
 
 
@@ -45,15 +43,8 @@ def process_mask(
     mask_path = _save_stage_image(mask_gray, cfg.segmented_dir, "segmented", sample_base)
 
     artifacts = run_skeletonization(mask_gray, config=config)
-    preprocessed = artifacts["preprocessed_mask"]
     skeleton = artifacts["skeleton_mask"]
 
-    preprocessed_path = _save_stage_image(
-        preprocessed,
-        cfg.segmented_dir,
-        "preprocessed",
-        sample_base,
-    )
     skeleton_path = _save_stage_image(
         skeleton,
         cfg.skeleton_dir,
@@ -63,10 +54,8 @@ def process_mask(
 
     return SkeletonizationResult(
         mask_image=artifacts["mask"],
-        preprocessed_image=preprocessed,
         skeleton_image=skeleton,
         mask_path=mask_path,
-        preprocessed_path=preprocessed_path,
         skeleton_path=skeleton_path,
     )
 

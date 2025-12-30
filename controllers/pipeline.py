@@ -202,7 +202,6 @@ def run_pipeline_for_ui(
             "sample_filename": signature.sample_filename or result.mask_path.name,
             "depth": signature.depth,
             "dimension": signature.dimension,
-            "num_samples": signature.num_samples,
             "resample_points": signature.resample_points,
             "path_length": round(signature.path_length, 3),
             "csv_path": str(result.signature_csv_path),

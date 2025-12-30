@@ -14,6 +14,8 @@ from controllers.polyline import (
     compute_route_flow,
     prepare_graph,
 )
+from views.components import file_selector
+from views.config import list_skeletonized_masks
 
 DATA_DIR = Path(os.environ.get("LEAFMINE_DATA_DIR", Path.cwd() / "data"))
 SKELETON_DIR = DATA_DIR / "skeletonized"
@@ -24,22 +26,23 @@ TAB_CONFIG = PolylineTabConfig(skeleton_dir=SKELETON_DIR, tmp_dir=TMP_DIR)
 
 def render() -> None:
     gr.Markdown(
-        "Load a skeleton PNG, prune tiny branches, inspect the resulting graph, "
-        "and compute an edge traversal order by specifying start / goal nodes."
+        "Load a skeleton PNG from `data/skeletonized/`, prune tiny branches, "
+        "inspect the resulting graph, and compute an edge traversal order. "
+        "You can also type an absolute path if the file lives elsewhere."
     )
 
-    skeleton_input = gr.Textbox(
-        label="Skeleton filename",
-        placeholder="skeleton_YYYYMMDD-HHMMSS.png",
-        info="Path under data/skeletonized/ (absolute paths also accepted).",
-    )
+    with gr.Row():
+        skeleton_input, _ = file_selector(
+            label="Skeleton filename",
+            choices_provider=list_skeletonized_masks,
+            refresh_label="Refresh skeleton list",
+        )
     branch_threshold = gr.Slider(
         label="Branch/loop pruning threshold (px)",
         value=100.0,
         minimum=0.0,
         maximum=200.0,
         step=1.0,
-        info="Remove degree-1 branches or micro loops shorter than this length (0 disables pruning).",
     )
     build_button = gr.Button("Build Skeleton Graph", variant="primary")
 
