@@ -4,18 +4,32 @@ import os
 
 import gradio as gr
 
+from controllers.pipeline import PipelineConfig
+from views.config import DataBrowser
 from views.tabs import polyline, signature, skeletonization
 
 
 def main() -> None:
+    pipeline_config = PipelineConfig.from_data_dir()
+    data_browser = DataBrowser(pipeline_config)
+
     with gr.Blocks() as demo:
         with gr.Tabs():
             with gr.Tab("1. Skeletonize Mask"):
-                skeletonization.render()
+                skeletonization.render(
+                    pipeline_config=pipeline_config,
+                    data_browser=data_browser,
+                )
             with gr.Tab("2. Route Builder"):
-                polyline.render()
+                polyline.render(
+                    pipeline_config=pipeline_config,
+                    data_browser=data_browser,
+                )
             with gr.Tab("3. Signatures"):
-                signature.render()
+                signature.render(
+                    pipeline_config=pipeline_config,
+                    data_browser=data_browser,
+                )
 
     demo.launch(
         server_name=os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),

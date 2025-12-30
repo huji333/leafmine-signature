@@ -2,27 +2,26 @@ from __future__ import annotations
 
 import csv
 from pathlib import Path
+from functools import partial
 
 import gradio as gr
 
+from controllers.pipeline import PipelineConfig
 from controllers.polyline_signatures import (
     PolylineSignatureConfig,
     analyze_polylines,
 )
-from views.config import DATA_DIR, build_pipeline_config, list_polylines
-
-PIPELINE_CONFIG = build_pipeline_config()
-DATA_BASE = DATA_DIR.expanduser().resolve()
-SIGNATURE_CONFIG = PolylineSignatureConfig(
-    data_dir=DATA_BASE,
-    polyline_dir=PIPELINE_CONFIG.polyline_dir,
-    output_dir=PIPELINE_CONFIG.signatures_dir,
-    summary_csv=PIPELINE_CONFIG.signature_csv,
-)
+from models.signature import default_log_signature_csv_path
+from views.config import DataBrowser
 
 
-def render() -> None:
-    SIGNATURE_CONFIG.ensure()
+def render(
+    *,
+    pipeline_config: PipelineConfig | None = None,
+    data_browser: DataBrowser | None = None,
+) -> None:
+    cfg = pipeline_config or PipelineConfig.from_data_dir()
+    browser = data_browser or DataBrowser(cfg)
 
     gr.Markdown(
         "Scan stored polylines under `data/polylines/` and append log-signature rows "
@@ -30,7 +29,7 @@ def render() -> None:
         "selected by default—uncheck any you want to skip."
     )
 
-    initial_choices = list_polylines()
+    initial_choices = browser.polylines()
     polyline_selector = gr.CheckboxGroup(
         label="Polyline JSON files",
         choices=initial_choices,
@@ -59,21 +58,24 @@ def render() -> None:
     status_output = gr.Markdown("")
 
     refresh_button.click(
-        fn=_refresh_polylines,
+        fn=partial(_refresh_polylines, browser),
         inputs=[polyline_selector],
         outputs=[polyline_selector],
     )
 
     run_button.click(
-        fn=_handle_signatures,
+        fn=partial(_handle_signatures, cfg),
         inputs=[polyline_selector, depth_slider, overwrite_checkbox],
         outputs=[csv_preview, status_output],
         show_progress=True,
     )
 
 
-def _refresh_polylines(current_selection: list[str] | None) -> gr.CheckboxGroup:
-    choices = list_polylines()
+def _refresh_polylines(
+    data_browser: DataBrowser,
+    current_selection: list[str] | None,
+) -> gr.CheckboxGroup:
+    choices = data_browser.polylines()
     if not choices:
         return gr.update(choices=[], value=[])
 
@@ -85,6 +87,7 @@ def _refresh_polylines(current_selection: list[str] | None) -> gr.CheckboxGroup:
 
 
 def _handle_signatures(
+    pipeline_config: PipelineConfig,
     selected_files: list[str] | None,
     depth_value: float | int,
     overwrite: bool,
@@ -92,39 +95,43 @@ def _handle_signatures(
     if not selected_files:
         raise gr.Error("Select at least one polyline JSON before running.")
 
-    SIGNATURE_CONFIG.ensure()
+    signature_config = _create_signature_config(pipeline_config)
+    signature_config.ensure()
     depth = int(depth_value)
-    paths = [_resolve_polyline_path(entry) for entry in selected_files]
+    paths = [_resolve_polyline_path(signature_config, entry) for entry in selected_files]
 
     results = analyze_polylines(
         paths,
         depth=depth,
-        config=SIGNATURE_CONFIG,
+        config=signature_config,
         skip_existing=not overwrite,
         summary=True,
     )
 
-    table, headers = _load_csv_preview(SIGNATURE_CONFIG.summary_csv)
+    table, headers = _load_csv_preview(signature_config.summary_csv)
     table_update = gr.update(value=table, headers=headers)
     status = (
-        f"Wrote {len(results)} new row(s) to `{SIGNATURE_CONFIG.summary_csv.name}` "
+        f"Wrote {len(results)} new row(s) to `{signature_config.summary_csv.name}` "
         f"(depth={depth})."
     )
     return table_update, status
 
 
-def _resolve_polyline_path(entry: str) -> Path:
+def _resolve_polyline_path(
+    config: PolylineSignatureConfig,
+    entry: str,
+) -> Path:
     raw = Path(entry)
     candidates = []
     if raw.is_absolute():
         candidates.append(raw)
     else:
-        candidates.append((SIGNATURE_CONFIG.polyline_dir / raw.name).resolve())
+        candidates.append((config.polyline_dir / raw.name).resolve())
         candidates.append((Path.cwd() / raw).resolve())
     for candidate in candidates:
         if candidate.exists():
             return candidate
-    raise gr.Error(f"Polyline {entry} was not found in {SIGNATURE_CONFIG.polyline_dir}.")
+    raise gr.Error(f"Polyline {entry} was not found in {config.polyline_dir}.")
 
 
 def _load_csv_preview(csv_path: Path, limit: int = 20) -> tuple[list[list[str]], list[str]]:
@@ -143,6 +150,17 @@ def _load_csv_preview(csv_path: Path, limit: int = 20) -> tuple[list[list[str]],
     cols = headers if headers else list(tail[0].keys())
     table = [[row.get(col, "") for col in cols] for row in tail]
     return table, cols
+
+
+def _create_signature_config(pipeline_config: PipelineConfig) -> PolylineSignatureConfig:
+    summary_csv = default_log_signature_csv_path(pipeline_config.signatures_dir)
+    data_dir = pipeline_config.segmented_dir.parent
+    return PolylineSignatureConfig(
+        data_dir=data_dir,
+        polyline_dir=pipeline_config.polyline_dir,
+        output_dir=pipeline_config.signatures_dir,
+        summary_csv=summary_csv,
+    )
 
 
 __all__ = ["render"]

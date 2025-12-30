@@ -2,12 +2,10 @@
 
 from __future__ import annotations
 
-import argparse
 import csv
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Sequence
 
 from models.signature import (
     LogSignatureResult,
@@ -84,86 +82,6 @@ def _load_polylines_from_csv(csv_path: Path) -> set[str]:
             if row.get("polyline_json")
         }
     return {item for item in recorded if item}
-
-
-def _cli(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Compute log signatures for polyline JSON files."
-    )
-    parser.add_argument(
-        "paths",
-        nargs="*",
-        type=Path,
-        help="Optional polyline JSON paths. If omitted, scans <data-dir>/polylines/*.json.",
-    )
-    parser.add_argument(
-        "--data-dir",
-        type=Path,
-        default=Path("data"),
-        help="Project data directory containing polylines/ and logsig/ subfolders.",
-    )
-    parser.add_argument(
-        "--depth",
-        type=int,
-        default=4,
-        help="Log-signature depth (default: 4).",
-    )
-    parser.add_argument(
-        "--overwrite",
-        action="store_true",
-        help="Recompute log signatures even if they already exist in the CSV.",
-    )
-    args = parser.parse_args(argv)
-
-    data_dir = args.data_dir.resolve()
-    polyline_dir = (data_dir / "polylines").resolve()
-    output_dir = (data_dir / "logsig").resolve()
-    summary_csv = default_log_signature_csv_path(output_dir)
-
-    cfg = PolylineSignatureConfig(
-        data_dir=data_dir,
-        polyline_dir=polyline_dir,
-        output_dir=output_dir,
-        summary_csv=summary_csv,
-    )
-
-    if args.paths:
-        candidates = [_resolve_polyline_path(arg, polyline_dir) for arg in args.paths]
-        candidates = [path for path in candidates if path is not None]
-    else:
-        candidates = sorted(polyline_dir.glob("*.json"))
-
-    if not candidates:
-        print("No polyline JSON files found; nothing to do.", file=sys.stderr)
-        return 1
-
-    analyze_polylines(
-        candidates,
-        depth=args.depth,
-        config=cfg,
-        skip_existing=not args.overwrite,
-        summary=True,
-    )
-    return 0
-
-
-def _resolve_polyline_path(arg: Path, polyline_dir: Path) -> Path | None:
-    raw = Path(arg)
-    candidates = []
-    if raw.is_absolute():
-        candidates.append(raw)
-    else:
-        candidates.append((Path.cwd() / raw).resolve())
-        candidates.append((polyline_dir / raw).resolve())
-    for candidate in candidates:
-        if candidate.exists():
-            return candidate
-    print(f"[missing] {arg} – skipping", file=sys.stderr)
-    return None
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(_cli())
 
 
 __all__ = [

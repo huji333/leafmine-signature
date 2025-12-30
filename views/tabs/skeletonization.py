@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import partial
 from pathlib import Path
 
 import gradio as gr
@@ -10,15 +11,22 @@ from skimage.measure import label
 from controllers.pipeline import PipelineConfig
 from controllers.skeletonization import process_mask
 from models.skeletonization import SkeletonizationConfig
+from models.utils import resolve_segmented_mask_path
 from views.components import file_selector
-from views.config import build_pipeline_config, list_segmented_masks
+from views.config import DataBrowser
 
-PIPELINE_CONFIG: PipelineConfig = build_pipeline_config()
 DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
 
-def render() -> None:
+def render(
+    *,
+    pipeline_config: PipelineConfig | None = None,
+    data_browser: DataBrowser | None = None,
+) -> None:
     """Upload or reuse segmented masks and inspect the resulting skeleton."""
+
+    cfg = pipeline_config or PipelineConfig.from_data_dir()
+    browser = data_browser or DataBrowser(cfg)
 
     gr.Markdown(
         "Upload a **segmented binary mask** or point to an existing "
@@ -35,7 +43,7 @@ def render() -> None:
     with gr.Row():
         existing_selector, _ = file_selector(
             label="Or pick an existing segmented filename",
-            choices_provider=list_segmented_masks,
+            choices_provider=browser.segmented,
             refresh_label="Refresh segmented list",
         )
 
@@ -91,7 +99,7 @@ def render() -> None:
     ]
 
     run_button.click(
-        fn=_handle_skeletonization,
+        fn=partial(_handle_skeletonization, cfg, browser),
         inputs=run_inputs,
         outputs=run_outputs,
         show_progress=True,
@@ -100,6 +108,8 @@ def render() -> None:
 
 
 def _handle_skeletonization(
+    pipeline_config: PipelineConfig,
+    data_browser: DataBrowser,
     selected_filename: str | None,
     uploaded_file: str | None,
     smooth_radius: float | int,
@@ -108,8 +118,10 @@ def _handle_skeletonization(
 ):
     """Persist the mask if needed, run skeletonization, and surface diagnostics."""
 
-    PIPELINE_CONFIG.ensure_directories()
-    mask_image, source_name = _resolve_mask_source(uploaded_file, selected_filename)
+    pipeline_config.ensure_directories()
+    mask_image, source_name = _resolve_mask_source(
+        pipeline_config, uploaded_file, selected_filename
+    )
     config = SkeletonizationConfig(
         smooth_radius=int(smooth_radius),
         hole_area_threshold=int(hole_area),
@@ -120,7 +132,7 @@ def _handle_skeletonization(
         result = process_mask(
             mask_image,
             original_name=source_name,
-            pipeline_config=PIPELINE_CONFIG,
+            pipeline_config=pipeline_config,
             config=config,
         )
     except ValueError as exc:
@@ -135,7 +147,7 @@ def _handle_skeletonization(
         f"erode={config.erode_radius})."
     )
     dropdown_update = gr.update(
-        choices=list_segmented_masks(),
+        choices=data_browser.segmented(),
         value=result.mask_path.name,
     )
 
@@ -149,6 +161,7 @@ def _handle_skeletonization(
 
 
 def _resolve_mask_source(
+    pipeline_config: PipelineConfig,
     uploaded_file: str | None,
     selected_filename: str | None,
 ) -> tuple[Image.Image, str]:
@@ -157,11 +170,15 @@ def _resolve_mask_source(
         return _load_grayscale_image(upload_path), upload_path.name
 
     if selected_filename:
-        candidate = Path(selected_filename)
-        if not candidate.is_absolute():
-            candidate = PIPELINE_CONFIG.segmented_dir / candidate.name
-        if not candidate.exists():
-            raise gr.Error(f"{candidate} does not exist. Refresh the list and try again.")
+        candidate = resolve_segmented_mask_path(
+            selected_filename,
+            [pipeline_config.segmented_dir],
+        )
+        if candidate is None:
+            raise gr.Error(
+                f"Could not find `{selected_filename}` in {pipeline_config.segmented_dir}. "
+                "Use the refresh button if new files were added."
+            )
         return _load_grayscale_image(candidate), candidate.name
 
     raise gr.Error("Upload a segmented mask or choose an existing filename first.")

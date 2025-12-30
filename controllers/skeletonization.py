@@ -9,7 +9,7 @@ from pathlib import Path
 from PIL import Image
 
 from .pipeline import PipelineConfig
-from models.utils import apply_stage_prefix, strip_prefix
+from models.utils import apply_stage_prefix, save_png, strip_prefix
 from models.skeletonization import (
     SkeletonizationConfig,
     run_skeletonization,
@@ -68,7 +68,7 @@ def _save_stage_image(
 ) -> Path:
     stem = apply_stage_prefix(stage, sample_base)
     destination = directory / f"{stem}.png"
-    image.save(destination)
+    save_png(image, destination, mode="L")
     return destination
 
 

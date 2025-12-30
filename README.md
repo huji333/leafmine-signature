@@ -8,17 +8,11 @@ Asset pipeline for calculating log signatures of curvilinear leaf mines.
 2. `make run` – brings up Gradio on http://localhost:7860. The default `RUN_PLATFORM` matches the image; set `RUN_PLATFORM=` (or another value) only when you intentionally built for a different architecture.
 3. Need a different data mount? `DATA_DIR=/abs/path make run`.
 
-## Run The Batch Pipeline
+## Guided Pipeline Flow (UI Only)
 
-1. Drop segmented PNGs into `data/segmented/`.
-2. Run `make process_segmented` (add `PIPELINE_ARGS="--limit 5"` or similar when needed).
-3. Set `BUILD=1` to rebuild the image before executing, or adjust `DATA_DIR` like in the UI flow.
-
-Artifacts land under `data/*` following the usual `segmented → skeletonized → polylines → logsig` chain, and every run emits a fresh CSV like `data/logsig/logsignatures_<timestamp>.csv`.
-
-## Analyze Existing Polylines
-
-`make analyze_polylines` scans `data/polylines/*.json` and appends new rows to a timestamped CSV under `data/logsig/logsignatures_<timestamp>.csv`. Limit or retarget the run with `POLYLINE_ARGS` (e.g., `POLYLINE_ARGS="--depth 5 foo.json"` or `POLYLINE_ARGS="--overwrite"`).
+1. **Skeletonize Mask tab** — upload a new segmented PNG (or pick an existing `segmented_*.png`). Uploaded masks are persisted automatically, previews highlight the skeleton, and multi-component skeletons are flagged so you can tweak preprocessing before moving on.
+2. **Route Builder tab** — select a skeleton from `data/skeletonized/`, inspect the pruned graph, and compute a traversal. Start/goal defaults are suggested per component, and the generated polyline JSON lands in `data/polylines/`.
+3. **Signatures tab** — choose any subset of stored polylines, set the depth, and click *Compute Signatures*. Each run writes to a brand-new CSV named `data/logsig/logsignatures_<timestamp>.csv`, mirroring the older CLI behavior but entirely from the UI.
 
 ## Skeletonize Masks Quickly
 
@@ -26,4 +20,4 @@ The **Skeletonize Mask** tab lets you upload a fresh segmented mine or select an
 
 ## Batch Signatures In-UI
 
-Use the **Signatures** tab to recompute log signatures for any subset of `data/polylines/*.json`. All polylines are selected by default—uncheck any you want to skip, adjust depth, and the tab will append rows to the same CSV that `make analyze_polylines` writes while showing a live preview of the latest entries.
+Use the **Signatures** tab to recompute log signatures for any subset of `data/polylines/*.json`. All polylines are selected by default—uncheck any you want to skip, adjust depth, and each run appends rows to its own timestamped CSV while showing a preview of the latest entries.

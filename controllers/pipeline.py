@@ -6,18 +6,16 @@ route -> log signature).
 
 from __future__ import annotations
 
-import argparse
 import os
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Callable
 
 from PIL import Image
 
 from .polyline import PolylineTabConfig, auto_route_polyline
-from models.utils import apply_stage_prefix, load_image, strip_prefix
+from models.utils import apply_stage_prefix, load_image, save_png, strip_prefix
 from models.signature import (
     LogSignatureResult,
     append_log_signature_csv,
@@ -37,6 +35,7 @@ class PipelineConfig:
     segmented_dir: Path = Path("data/segmented")
     skeleton_dir: Path = Path("data/skeletonized")
     polyline_dir: Path = Path("data/polylines")
+    tmp_dir: Path = Path("data/tmp")
     signatures_dir: Path = Path("data/logsig")
     signature_csv: Path = field(default_factory=default_log_signature_csv_path)
     polyline_branch_threshold: float = 0.0
@@ -47,8 +46,23 @@ class PipelineConfig:
         self.segmented_dir.mkdir(parents=True, exist_ok=True)
         self.skeleton_dir.mkdir(parents=True, exist_ok=True)
         self.polyline_dir.mkdir(parents=True, exist_ok=True)
+        self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.signatures_dir.mkdir(parents=True, exist_ok=True)
         self.signature_csv.parent.mkdir(parents=True, exist_ok=True)
+
+    @classmethod
+    def from_data_dir(cls, data_dir: Path | None = None) -> PipelineConfig:
+        base = data_dir or _default_data_dir()
+        base = base.expanduser().resolve()
+        signatures_dir = base / "logsig"
+        return cls(
+            segmented_dir=base / "segmented",
+            skeleton_dir=base / "skeletonized",
+            polyline_dir=base / "polylines",
+            tmp_dir=base / "tmp",
+            signatures_dir=signatures_dir,
+            signature_csv=default_log_signature_csv_path(signatures_dir),
+        )
 
 
 
@@ -122,8 +136,9 @@ def process_segmented_mask(
 
     poly_cfg = PolylineTabConfig(
         skeleton_dir=cfg.skeleton_dir,
-        tmp_dir=cfg.polyline_dir,
+        tmp_dir=cfg.tmp_dir,
         polyline_dir=cfg.polyline_dir,
+        segmented_dir=cfg.segmented_dir,
     )
     route_artifacts = auto_route_polyline(
         skeleton_path,
@@ -274,7 +289,14 @@ def _resolve_mask_artifact(
     base_name: str | None,
 ) -> tuple[Path, str]:
     if isinstance(segmented_mask, Image.Image):
-        raise ValueError("Provide a saved mask path when calling process_segmented_mask")
+        saved = _save_mask_image(
+            segmented_mask,
+            cfg=cfg,
+            source=None,
+            override=base_name,
+        )
+        derived_base = _derive_base_name(saved, None)
+        return saved, derived_base
 
     source_path = Path(segmented_mask)
     if not source_path.exists():
@@ -332,8 +354,7 @@ def _save_mask_image(
     base = _derive_base_name(source, override)
     mask_stem = apply_stage_prefix("segmented", base)
     destination = cfg.segmented_dir / f"{mask_stem}.png"
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    mask_image.convert("L").save(destination)
+    save_png(mask_image, destination, mode="L")
     return destination
 
 
@@ -344,121 +365,6 @@ def _default_data_dir() -> Path:
     return Path.cwd() / "data"
 
 
-def _cli(argv: Sequence[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(
-        description="Batch process every segmented PNG sitting under data/segmented/."
-    )
-    parser.add_argument(
-        "--data-dir",
-        type=Path,
-        default=_default_data_dir(),
-        help="Root folder containing segmented/, skeletonized/, tmp/, logsig/ (default: ./data or $LEAFMINE_DATA_DIR).",
-    )
-    parser.add_argument(
-        "--num-samples",
-        type=int,
-        default=256,
-        help="Resample each polyline to N points before computing log signatures (default: 256).",
-    )
-    parser.add_argument(
-        "--depth",
-        type=int,
-        default=4,
-        help="Log-signature truncation depth (default: 4).",
-    )
-    parser.add_argument(
-        "--polyline-branch-threshold",
-        type=float,
-        default=0.0,
-        help="Length threshold (in px) for pruning skeleton branches before routing (default: 0).",
-    )
-    parser.add_argument(
-        "--limit",
-        type=int,
-        default=None,
-        help="Optionally cap how many masks to process from the segmented directory.",
-    )
-    parser.add_argument(
-        "--skeleton-white-threshold",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.white_threshold,
-        help="RGB cutoff (0-255) for mask foreground pixels before skeletonization (default: 200).",
-    )
-    parser.add_argument(
-        "--skeleton-smooth-radius",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.smooth_radius,
-        help="Radius of the closing structuring element before skeletonization (default: 3).",
-    )
-    parser.add_argument(
-        "--skeleton-hole-area",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.hole_area_threshold,
-        help="Maximum hole area (px^2) to fill inside the mask before skeletonization (default: 100).",
-    )
-    parser.add_argument(
-        "--skeleton-erode-radius",
-        type=int,
-        default=DEFAULT_SKELETON_CONFIG.erode_radius,
-        help="Erosion radius applied before closing to separate touching regions (default: 4).",
-    )
-    args = parser.parse_args(argv)
-
-    data_dir = args.data_dir.expanduser()
-    segmented_dir = data_dir / "segmented"
-    if not segmented_dir.exists():
-        parser.error(f"{segmented_dir} does not exist.")
-
-    mask_paths = sorted(segmented_dir.glob("*.png"))
-    if args.limit is not None:
-        mask_paths = mask_paths[: args.limit]
-
-    if not mask_paths:
-        print(f"No PNG masks found under {segmented_dir}", file=sys.stderr)
-        return 0
-
-    cfg = PipelineConfig(
-        segmented_dir=segmented_dir,
-        skeleton_dir=data_dir / "skeletonized",
-        polyline_dir=data_dir / "polylines",
-        signatures_dir=data_dir / "logsig",
-        signature_csv=default_log_signature_csv_path(data_dir / "logsig"),
-        polyline_branch_threshold=args.polyline_branch_threshold,
-    )
-    print(f"Appending log-signature rows to {cfg.signature_csv}")
-
-    skeleton_cfg = SkeletonizationConfig(
-        white_threshold=args.skeleton_white_threshold,
-        smooth_radius=args.skeleton_smooth_radius,
-        hole_area_threshold=args.skeleton_hole_area,
-        erode_radius=args.skeleton_erode_radius,
-    )
-
-    total = len(mask_paths)
-    last_csv: Path | None = None
-
-    for idx, mask_path in enumerate(mask_paths, start=1):
-        try:
-            result = process_segmented_mask(
-                mask_path,
-                config=cfg,
-                skeleton_config=skeleton_cfg,
-                num_samples=args.num_samples,
-                depth=args.depth,
-            )
-        except Exception as exc:  # pragma: no cover - CLI convenience
-            print(f"[{idx}/{total}] Failed {mask_path.name}: {exc}", file=sys.stderr)
-            return 1
-
-        last_csv = result.signature_csv_path
-        sample_name = result.signature.sample_filename or mask_path.name
-        print(f"[{idx}/{total}] {sample_name} -> CSV row {result.signature_csv_path.name}")
-
-    destination = last_csv or cfg.signature_csv
-    print(f"Processed {total} mask(s). Log-signature summary appended to {destination}.")
-    return 0
-
-
 __all__ = [
     "PipelineConfig",
     "PipelineResult",
@@ -467,7 +373,3 @@ __all__ = [
     "process_with_segmenter",
     "run_pipeline_for_ui",
 ]
-
-
-if __name__ == "__main__":  # pragma: no cover
-    raise SystemExit(_cli())

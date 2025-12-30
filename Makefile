@@ -1,7 +1,5 @@
 IMAGE ?= leafmine-signature:latest
 DATA_DIR ?= $(CURDIR)/data
-PIPELINE_ARGS ?=
-POLYLINE_ARGS ?=
 
 HOST_ARCH := $(shell /usr/bin/uname -m 2>/dev/null)
 DEFAULT_PLATFORM :=
@@ -23,7 +21,7 @@ ifneq ($(strip $(RUN_PLATFORM)),)
   RUN_PLATFORM_FLAG := --platform $(RUN_PLATFORM)
 endif
 
-.PHONY: setup build run process_segmented analyze_polylines lint remove_data clean
+.PHONY: setup build run lint remove_data clean
 
 setup:
 	$(MAKE) build
@@ -36,26 +34,6 @@ run: build
 	docker run --rm -it $(RUN_PLATFORM_FLAG) -p 7860:7860 \
 		-v $(DATA_DIR):/app/data \
 		$(IMAGE)
-
-process_segmented:
-ifneq ($(BUILD),)
-	$(MAKE) build
-endif
-	@mkdir -p $(DATA_DIR)
-	docker run --rm -it $(RUN_PLATFORM_FLAG) \
-		-v $(DATA_DIR):/app/data \
-		$(IMAGE) \
-		uv run --frozen --no-sync python -m controllers.pipeline --data-dir /app/data $(PIPELINE_ARGS)
-
-analyze_polylines:
-ifneq ($(BUILD),)
-	$(MAKE) build
-endif
-	@mkdir -p $(DATA_DIR)
-	docker run --rm -it $(RUN_PLATFORM_FLAG) \
-		-v $(DATA_DIR):/app/data \
-		$(IMAGE) \
-		uv run --frozen --no-sync python -m controllers.polyline_signatures --data-dir /app/data $(POLYLINE_ARGS)
 
 lint:
 ifneq ($(BUILD),)

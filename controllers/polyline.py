@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -10,7 +9,12 @@ from typing import Iterable
 from PIL import Image
 
 from models.graph_render import render_graph_preview
-from models.utils import canonical_sample_name, prefixed_name
+from models.utils import (
+    canonical_sample_name,
+    load_image,
+    prefixed_name,
+    resolve_segmented_mask_path,
+)
 from models.polyline_utils import compute_polyline_artifacts, render_route_preview
 from models.route import RouteResult, compute_route
 from models.skeleton_graph import (
@@ -27,11 +31,14 @@ class PolylineTabConfig:
     skeleton_dir: Path = Path("data/skeletonized")
     tmp_dir: Path = Path("data/tmp")
     polyline_dir: Path = Path("data/polylines")
+    segmented_dir: Path | None = Path("data/segmented")
 
     def ensure(self) -> None:
         self.skeleton_dir.mkdir(parents=True, exist_ok=True)
         self.tmp_dir.mkdir(parents=True, exist_ok=True)
         self.polyline_dir.mkdir(parents=True, exist_ok=True)
+        if self.segmented_dir is not None:
+            self.segmented_dir.mkdir(parents=True, exist_ok=True)
 
 
 @dataclass(slots=True)
@@ -48,6 +55,7 @@ class GraphSession:
 @dataclass(slots=True)
 class GraphPrepResult:
     skeleton_image: Image.Image
+    segmented_image: Image.Image | None
     pruned_overlay: Image.Image
     graph_payload: dict[str, object]
     graph_json_path: Path
@@ -100,6 +108,7 @@ def prepare_graph(
 
     graph_filename = prefixed_name("graph", sample_base, ".json")
     graph_json_path = cfg.tmp_dir / graph_filename
+    graph_payload = pruned_graph.to_payload()
     pruned_graph.save(graph_json_path)
 
     components = _connected_components(pruned_graph)
@@ -114,11 +123,10 @@ def prepare_graph(
         skeleton_path,
         annotate_node_ids=leaf_ids,
     )
+    segmented_preview = _load_segmented_preview(sample_base, skeleton_path, cfg.segmented_dir)
     short_edges = _short_edge_summary(pruned_graph, leaf_ids=leaf_ids)
 
-    payload = json.loads(graph_json_path.read_text())
-    if not isinstance(payload, dict):
-        payload = {"graph": payload}
+    payload = {**graph_payload}
     payload["metadata"] = {
         "skeleton_png": str(skeleton_path),
         "graph_json": str(graph_json_path),
@@ -148,6 +156,7 @@ def prepare_graph(
 
     return GraphPrepResult(
         skeleton_image=skeleton_image,
+        segmented_image=segmented_preview,
         pruned_overlay=overlay,
         graph_payload=payload,
         graph_json_path=graph_json_path,
@@ -389,6 +398,28 @@ def _connected_components(graph: SkeletonGraph) -> list[set[int]]:
                     stack.append(neighbor)
         components.append(component)
     return components
+
+
+def _load_segmented_preview(
+    sample_base: str,
+    skeleton_path: Path,
+    segmented_dir: Path | None,
+) -> Image.Image | None:
+    suffix = skeleton_path.suffix or ".png"
+    skeleton_dir = skeleton_path.parent
+    search_dirs = [
+        segmented_dir,
+        skeleton_dir,
+        skeleton_dir.parent / "segmented",
+    ]
+    candidate = resolve_segmented_mask_path(
+        sample_base,
+        search_dirs,
+        default_suffix=suffix,
+    )
+    if candidate is None:
+        return None
+    return load_image(candidate, mode="RGB")
 
 
 def _render_images(
