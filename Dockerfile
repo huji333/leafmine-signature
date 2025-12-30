@@ -11,6 +11,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         build-essential=${BUILD_ESSENTIAL_VERSION} \
         python3-dev=${PYTHON_DEV_VERSION} \
+        libboost-python-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock README.md ./
