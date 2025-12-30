@@ -4,7 +4,7 @@ import json
 from dataclasses import dataclass
 from math import hypot
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
 from PIL import Image
 

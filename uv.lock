@@ -423,6 +423,7 @@ dependencies = [
     { name = "numpy" },
     { name = "pillow" },
     { name = "scikit-image" },
+    { name = "ruff" },
 ]
 
 [package.metadata]
@@ -432,6 +433,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pillow", specifier = ">=10.4.0" },
     { name = "scikit-image", specifier = ">=0.24.0" },
+    { name = "ruff", specifier = ">=0.14.1,<0.15" },
 ]
 
 [[package]]
