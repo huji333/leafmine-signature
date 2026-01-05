@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 
 from PIL import Image
 
-from controllers.artifacts import resolve_segmented_mask_path
+from controllers.artifacts import ensure_flat_stage_identifier, resolve_segmented_mask_path
 from controllers.data_paths import DataPaths
 from models.graph_render import render_graph_preview
 from models.skeleton_graph import (
@@ -20,14 +22,21 @@ from models.utils.naming import canonical_sample_name, prefixed_name
 
 
 @dataclass(slots=True)
-class GraphSession:
-    graph: SkeletonGraph
+class GraphSource:
+    sample_base: str
     skeleton_path: Path
+    base_graph: SkeletonGraph
+
+
+@dataclass(slots=True)
+class GraphSession:
+    source: GraphSource
+    pruned_graph: SkeletonGraph
     graph_json_path: Path
+    manifest_path: Path
     branch_threshold: float
     polyline_dir: Path
     component_map: dict[int, int]
-    sample_base: str
 
 
 @dataclass(slots=True)
@@ -37,6 +46,7 @@ class GraphPrepResult:
     pruned_overlay: Image.Image
     graph_payload: dict[str, object]
     graph_json_path: Path
+    manifest_path: Path
     leaf_nodes: list[dict[str, int]]
     short_edges: list[dict[str, float | int]]
     default_start: int | None
@@ -54,21 +64,31 @@ def prepare_graph(
     paths = data_paths or DataPaths.from_data_dir()
     paths.ensure_directories()
 
+    ensure_flat_stage_identifier(
+        skeleton_filename,
+        description="Skeleton filename",
+    )
     skeleton_path = _resolve_filename(skeleton_filename, paths.skeleton_dir)
     branch_threshold = max(0.0, float(branch_threshold))
 
     sample_base = canonical_sample_name(skeleton_path)
-    graph = build_skeleton_graph(skeleton_path)
+    source = _load_graph_source(skeleton_path, sample_base)
     pruned_graph = (
-        prune_short_branches(graph, branch_threshold)
+        prune_short_branches(source.base_graph, branch_threshold)
         if branch_threshold > 0
-        else graph
+        else source.base_graph.copy()
     )
 
     graph_filename = prefixed_name("graph", sample_base, ".json")
     graph_json_path = paths.graph_dir / graph_filename
     graph_payload = pruned_graph.to_payload()
     pruned_graph.save(graph_json_path)
+    manifest_path = _write_graph_manifest(
+        graph_json_path,
+        source,
+        branch_threshold,
+        pruned_graph,
+    )
 
     components = _connected_components(pruned_graph)
     component_map = {
@@ -104,13 +124,13 @@ def prepare_graph(
     )
 
     session = GraphSession(
-        graph=pruned_graph,
-        skeleton_path=skeleton_path,
+        source=source,
+        pruned_graph=pruned_graph,
         graph_json_path=graph_json_path,
+        manifest_path=manifest_path,
         branch_threshold=branch_threshold,
         polyline_dir=paths.polyline_dir,
         component_map=component_map,
-        sample_base=sample_base,
     )
 
     return GraphPrepResult(
@@ -119,6 +139,7 @@ def prepare_graph(
         pruned_overlay=overlay,
         graph_payload=payload,
         graph_json_path=graph_json_path,
+        manifest_path=manifest_path,
         leaf_nodes=leaf_nodes,
         short_edges=short_edges,
         default_start=defaults[0],
@@ -250,7 +271,55 @@ def _render_images(
     )
 
 
+def _load_graph_source(skeleton_path: Path, sample_base: str) -> GraphSource:
+    base_graph = _load_cached_skeleton_graph(skeleton_path)
+    return GraphSource(
+        sample_base=sample_base,
+        skeleton_path=skeleton_path,
+        base_graph=base_graph,
+    )
+
+
+def _write_graph_manifest(
+    graph_json_path: Path,
+    source: GraphSource,
+    branch_threshold: float,
+    graph: SkeletonGraph,
+) -> Path:
+    manifest = {
+        "graph_json": str(graph_json_path),
+        "manifest_version": 1,
+        "sample_base": source.sample_base,
+        "skeleton_png": str(source.skeleton_path),
+        "branch_threshold": branch_threshold,
+        "node_count": len(graph.nodes),
+        "edge_count": len(graph.edges),
+        "segmented_filename": prefixed_name("segmented", source.sample_base, ".png"),
+    }
+    manifest_path = graph_json_path.with_suffix(".meta.json")
+    manifest_path.write_text(json.dumps(manifest, indent=2))
+    return manifest_path
+
+
+def _load_cached_skeleton_graph(skeleton_path: Path) -> SkeletonGraph:
+    resolved = skeleton_path.resolve()
+    mtime_ns = _file_mtime_ns(resolved)
+    return _skeleton_graph_cache(resolved.as_posix(), mtime_ns)
+
+
+def _file_mtime_ns(path: Path) -> int:
+    stat_result = path.stat()
+    return getattr(stat_result, "st_mtime_ns", int(stat_result.st_mtime * 1_000_000_000))
+
+
+@lru_cache(maxsize=16)
+def _skeleton_graph_cache(path_str: str, mtime_ns: int) -> SkeletonGraph:
+    _ = mtime_ns  # memoization key ensures cache busts when file timestamp changes
+    return build_skeleton_graph(Path(path_str))
+
+
 __all__ = [
+    "GraphSource",
     "GraphPrepResult",
     "GraphSession",
     "prepare_graph",

@@ -4,24 +4,15 @@ from __future__ import annotations
 
 import argparse
 import csv
-import importlib.util
+import sys
 from pathlib import Path
-from typing import Callable, Sequence
+from typing import Sequence
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-NAMING_MODULE_PATH = REPO_ROOT / "models" / "utils" / "naming.py"
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 
-
-def _load_canonical_sample_name() -> Callable[[str | Path], str]:
-    spec = importlib.util.spec_from_file_location("leafmine_naming", NAMING_MODULE_PATH)
-    if spec is None or spec.loader is None:
-        raise ImportError(f"Unable to load naming helpers from {NAMING_MODULE_PATH}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)  # type: ignore[misc]
-    return module.canonical_sample_name
-
-
-canonical_sample_name = _load_canonical_sample_name()
+from controllers.data_paths import list_canonical_sample_ids  # noqa: E402
 
 
 def derive_sample_ids(directory: Path, pattern: str) -> list[str]:
@@ -29,20 +20,10 @@ def derive_sample_ids(directory: Path, pattern: str) -> list[str]:
     if not directory.exists():
         raise FileNotFoundError(f"{directory} does not exist.")
 
-    files = sorted(
-        path for path in directory.glob(pattern) if path.is_file() and path.suffix.lower() == ".png"
-    )
-    if not files:
+    sample_ids = list_canonical_sample_ids(directory, pattern)
+    if not sample_ids:
         raise ValueError(f"No PNG files matching '{pattern}' found under {directory}.")
-
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for path in files:
-        name = canonical_sample_name(path)
-        if name not in seen:
-            seen.add(name)
-            ordered.append(name)
-    return ordered
+    return sample_ids
 
 
 def read_existing_annotation(path: Path) -> tuple[list[dict[str, str]], list[str]]:

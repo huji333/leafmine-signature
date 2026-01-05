@@ -6,7 +6,7 @@ import csv
 from pathlib import Path
 from typing import Sequence
 
-from controllers.artifacts import resolve_stage_artifact_path
+from controllers.artifacts import ensure_flat_stage_identifier, resolve_stage_artifact_path
 from controllers.data_paths import DataPaths
 from models.signature import (
     LogSignatureResult,
@@ -20,24 +20,16 @@ def analyze_polylines(
     *,
     depth: int,
     summary_csv: Path,
-    skip_existing: bool = True,
 ) -> tuple[list[LogSignatureResult], list[str]]:
     """Compute log signatures for every polyline JSON in ``polylines``."""
 
     summary_csv.parent.mkdir(parents=True, exist_ok=True)
     results: list[LogSignatureResult] = []
-    existing_polylines: set[str] = set()
     logs: list[str] = []
-    if skip_existing:
-        existing_polylines = _load_polylines_from_csv(summary_csv)
     for path in polylines:
         path = path.resolve()
         if not path.exists():
             logs.append(f"[skipping] {path} – file not found")
-            continue
-        polyline_key = str(path)
-        if skip_existing and polyline_key in existing_polylines:
-            logs.append(f"[cached] {path.name} -> already in CSV")
             continue
         try:
             result = log_signature_from_json(path, depth=depth)
@@ -45,8 +37,6 @@ def analyze_polylines(
             logs.append(f"[error] {path.name}: {exc}")
             continue
         append_log_signature_csv(result, summary_csv)
-        if skip_existing:
-            existing_polylines.add(polyline_key)
         results.append(result)
         logs.append(f"[ok] {path.name} → CSV row ({result.dimension} dims)")
     return results, logs
@@ -72,7 +62,6 @@ def compute_signature_flow(
         polylines,
         depth=depth,
         summary_csv=summary_csv,
-        skip_existing=True,
     )
 
     table, headers = _load_csv_preview(summary_csv)
@@ -85,21 +74,6 @@ def compute_signature_flow(
     else:
         status = summary_line
     return table, headers, status
-
-
-def _load_polylines_from_csv(csv_path: Path) -> set[str]:
-    """Read polyline paths already recorded in the summary CSV."""
-
-    if not csv_path.exists():
-        return set()
-    with csv_path.open("r", newline="") as handle:
-        reader = csv.DictReader(handle)
-        recorded = {
-            row.get("polyline_json", "").strip()
-            for row in reader
-            if row.get("polyline_json")
-        }
-    return {item for item in recorded if item}
 
 
 def _load_csv_preview(csv_path: Path, limit: int = 20) -> tuple[list[list[str]], list[str]]:
@@ -127,9 +101,10 @@ __all__ = [
 
 
 def _resolve_polyline_path(entry: str, polyline_dir: Path) -> Path:
+    ensure_flat_stage_identifier(entry, description="Polyline filename")
     candidate = resolve_stage_artifact_path(
         entry,
-        [polyline_dir, Path.cwd()],
+        [polyline_dir],
         stage_names=("polyline",),
         default_suffix=".json",
         extra_suffixes=(".json", ""),

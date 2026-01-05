@@ -23,11 +23,12 @@ def render(
     cfg, browser = resolve_runtime_paths(data_paths, data_browser)
 
     with gr.Row():
-        skeleton_input, _ = file_selector(
+        skeleton_selector = file_selector(
             label="Skeleton filename",
             choices_provider=browser.skeletonized,
             refresh_label="Refresh skeleton list",
         )
+        skeleton_input = skeleton_selector.dropdown
     branch_threshold = gr.Slider(
         label="Branch/loop pruning threshold (px)",
         value=100.0,

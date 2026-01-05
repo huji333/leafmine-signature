@@ -35,7 +35,8 @@ def compute_route_flow(
     if session is None:
         raise ValueError("Run the graph preparation step first.")
 
-    graph = session.graph
+    graph = session.pruned_graph
+    source = session.source
 
     if start_node not in graph.nodes:
         raise ValueError(f"Start node {start_node} is not present in the graph.")
@@ -97,11 +98,11 @@ def compute_route_flow(
         "start_node": start_node,
         "goal_node": goal_node,
         "resample_points": int(resample_points),
-        "sample_base": session.sample_base,
-        "segmented_filename": prefixed_name("segmented", session.sample_base, ".png"),
-        "skeleton_filename": session.skeleton_path.name,
+        "sample_base": source.sample_base,
+        "segmented_filename": prefixed_name("segmented", source.sample_base, ".png"),
+        "skeleton_filename": source.skeleton_path.name,
     }
-    polyline_filename = prefixed_name("polyline", session.sample_base, ".json")
+    polyline_filename = prefixed_name("polyline", source.sample_base, ".json")
     polyline_path = session.polyline_dir / polyline_filename
 
     artifacts = compute_polyline_artifacts(
@@ -112,7 +113,7 @@ def compute_route_flow(
         output_path=polyline_path,
     )
 
-    route_preview = render_route_preview(session.skeleton_path, artifacts.polyline)
+    route_preview = render_route_preview(source.skeleton_path, artifacts.polyline)
 
     return RouteFlowResult(
         route_payload=route_payload,

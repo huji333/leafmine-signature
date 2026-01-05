@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from controllers.data_paths import DataPaths
+from controllers.data_paths import DataPaths, fetch_artifact_paths
 
 
 @dataclass(slots=True)
@@ -12,13 +12,29 @@ class DataBrowser:
     config: DataPaths
 
     def segmented(self) -> list[str]:
-        return _list_files(self.config.segmented_dir, suffix=".png", skip_prefix="preprocessed_")
+        return _artifact_names(
+            fetch_artifact_paths(
+                self.config.segmented_dir,
+                "*.png",
+                skip_prefix="preprocessed_",
+            )
+        )
 
     def skeletonized(self) -> list[str]:
-        return _list_files(self.config.skeleton_dir, suffix=".png")
+        return _artifact_names(
+            fetch_artifact_paths(
+                self.config.skeleton_dir,
+                "*.png",
+            )
+        )
 
     def polylines(self) -> list[str]:
-        return _list_files(self.config.polyline_dir, suffix=".json")
+        return _artifact_names(
+            fetch_artifact_paths(
+                self.config.polyline_dir,
+                "*.json",
+            )
+        )
 
 
 def resolve_runtime_paths(
@@ -32,17 +48,8 @@ def resolve_runtime_paths(
     return cfg, browser
 
 
-def _list_files(directory, *, suffix: str, skip_prefix: str | None = None) -> list[str]:
-    directory = directory.expanduser()
-    if not directory.exists():
-        return []
-    entries: list[str] = []
-    for path in sorted(directory.glob(f"*{suffix}")):
-        name = path.name
-        if skip_prefix and name.startswith(skip_prefix):
-            continue
-        entries.append(name)
-    return entries
+def _artifact_names(paths) -> list[str]:
+    return [path.name for path in paths]
 
 
 __all__ = ["DataBrowser", "resolve_runtime_paths"]

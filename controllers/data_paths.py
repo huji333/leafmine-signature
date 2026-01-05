@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
 from controllers.settings import load_data_dir
+from models.utils.naming import canonical_sample_name
 
 
 def _default_data_dir() -> Path:
@@ -54,4 +56,43 @@ class DataPaths:
         )
 
 
-__all__ = ["DataPaths"]
+def fetch_artifact_paths(
+    directory: Path,
+    pattern: str,
+    *,
+    skip_prefix: str | None = None,
+) -> list[Path]:
+    """Return sorted artifact paths inside ``directory`` matching ``pattern``."""
+
+    directory = directory.expanduser()
+    if not directory.exists():
+        return []
+    entries: list[Path] = []
+    for path in sorted(directory.glob(pattern)):
+        if skip_prefix and path.name.startswith(skip_prefix):
+            continue
+        if path.is_file():
+            entries.append(path)
+    return entries
+
+
+def list_canonical_sample_ids(
+    directory: Path,
+    pattern: str,
+    *,
+    skip_prefix: str | None = None,
+) -> list[str]:
+    """Return canonical sample ids derived from filenames in ``directory``."""
+
+    files = fetch_artifact_paths(directory, pattern, skip_prefix=skip_prefix)
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for path in files:
+        sample_id = canonical_sample_name(path)
+        if sample_id not in seen:
+            seen.add(sample_id)
+            ordered.append(sample_id)
+    return ordered
+
+
+__all__ = ["DataPaths", "fetch_artifact_paths", "list_canonical_sample_ids"]

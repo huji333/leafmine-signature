@@ -2,11 +2,18 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import dataclass
 
 import gradio as gr
 
 
 ChoicesProvider = Callable[[], list[str]]
+
+
+@dataclass(slots=True)
+class FileSelectorComponents:
+    dropdown: gr.Dropdown
+    refresh_button: gr.Button
 
 
 def file_selector(
@@ -15,7 +22,7 @@ def file_selector(
     choices_provider: ChoicesProvider,
     allow_custom_value: bool = True,
     refresh_label: str = "Refresh",
-) -> tuple[gr.Dropdown, gr.Button]:
+) -> FileSelectorComponents:
     """Render a dropdown + refresh button bound to the provided choices."""
 
     choices = choices_provider()
@@ -37,7 +44,7 @@ def file_selector(
         return gr.update(choices=fresh, value=value)
 
     refresh_button.click(fn=_refresh, inputs=[dropdown], outputs=[dropdown])
-    return dropdown, refresh_button
+    return FileSelectorComponents(dropdown=dropdown, refresh_button=refresh_button)
 
 
-__all__ = ["file_selector"]
+__all__ = ["file_selector", "FileSelectorComponents"]
