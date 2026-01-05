@@ -10,7 +10,8 @@ from PIL import Image, UnidentifiedImageError
 
 from controllers.artifacts import resolve_segmented_mask_path
 from controllers.data_paths import DataPaths
-from models.utils import apply_stage_prefix, save_png, strip_prefix
+from models.utils.image_io import save_png
+from models.utils.naming import apply_stage_prefix, strip_prefix
 from models.skeletonization import (
     SkeletonizationConfig,
     run_skeletonization,

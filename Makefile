@@ -1,5 +1,9 @@
 IMAGE ?= leafmine-signature:latest
 DATA_DIR ?= $(CURDIR)/data
+PYTHON ?= python3
+SEGMENTED_DIR ?= $(DATA_DIR)/segmented
+ANNOTATION_CSV ?= $(DATA_DIR)/sample_annotation.csv
+SEGMENTED_GLOB ?= segmented_*.png
 
 HOST_ARCH := $(shell /usr/bin/uname -m 2>/dev/null)
 DEFAULT_PLATFORM :=
@@ -21,7 +25,7 @@ ifneq ($(strip $(RUN_PLATFORM)),)
   RUN_PLATFORM_FLAG := --platform $(RUN_PLATFORM)
 endif
 
-.PHONY: setup build run lint remove_data clean
+.PHONY: setup build run lint remove_data clean annotation_csv
 
 setup:
 	$(MAKE) build
@@ -45,6 +49,9 @@ endif
 		-w /app \
 		$(IMAGE) \
 		uv run --frozen ruff check .
+
+annotation_csv:
+	$(PYTHON) scripts/generate_sample_annotation.py --input-dir "$(SEGMENTED_DIR)" --output "$(ANNOTATION_CSV)" --glob "$(SEGMENTED_GLOB)"
 
 remove_data:
 	@mkdir -p $(DATA_DIR)
