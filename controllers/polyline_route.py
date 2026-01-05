@@ -9,7 +9,7 @@ from PIL import Image
 
 from models.polyline_utils import compute_polyline_artifacts, render_route_preview
 from models.route import RouteResult, compute_route
-from models.utils import prefixed_name
+from models.utils.naming import prefixed_name
 
 from .polyline_graph import GraphSession
 

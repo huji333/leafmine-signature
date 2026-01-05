@@ -15,7 +15,8 @@ from models.skeleton_graph import (
     build_skeleton_graph,
     prune_short_branches,
 )
-from models.utils import canonical_sample_name, load_image, prefixed_name
+from models.utils.image_io import load_image
+from models.utils.naming import canonical_sample_name, prefixed_name
 
 
 @dataclass(slots=True)

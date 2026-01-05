@@ -11,7 +11,7 @@ from functools import lru_cache
 
 import numpy as np
 
-from .utils import canonical_sample_name, prefixed_name
+from .utils.naming import canonical_sample_name, prefixed_name
 
 try:  # pragma: no cover - allow importing without optional dependency
     import iisignature
