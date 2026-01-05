@@ -8,7 +8,7 @@ from controllers.signature import (
     compute_signature_flow,
 )
 from controllers.data_paths import DataPaths
-from views.config import DataBrowser
+from views.config import DataBrowser, resolve_runtime_paths
 
 
 def render(
@@ -16,8 +16,7 @@ def render(
     data_paths: DataPaths | None = None,
     data_browser: DataBrowser | None = None,
 ) -> None:
-    cfg = data_paths or DataPaths.from_data_dir()
-    browser = data_browser or DataBrowser(cfg)
+    cfg, browser = resolve_runtime_paths(data_paths, data_browser)
 
     gr.Markdown(
         "Scan stored polylines under `data/polylines/` and append log-signature rows "

@@ -20,32 +20,6 @@ from models.utils.naming import canonical_sample_name, prefixed_name
 
 
 @dataclass(slots=True)
-class PolylineTabConfig:
-    """Directories backing the polyline tab workflow."""
-
-    skeleton_dir: Path = Path("data/skeletonized")
-    graph_dir: Path = Path("data/graphs")
-    polyline_dir: Path = Path("data/polylines")
-    segmented_dir: Path | None = Path("data/segmented")
-
-    def ensure(self) -> None:
-        self.skeleton_dir.mkdir(parents=True, exist_ok=True)
-        self.graph_dir.mkdir(parents=True, exist_ok=True)
-        self.polyline_dir.mkdir(parents=True, exist_ok=True)
-        if self.segmented_dir is not None:
-            self.segmented_dir.mkdir(parents=True, exist_ok=True)
-
-    @classmethod
-    def from_data_paths(cls, data_paths: DataPaths) -> "PolylineTabConfig":
-        return cls(
-            skeleton_dir=data_paths.skeleton_dir,
-            graph_dir=data_paths.graph_dir,
-            polyline_dir=data_paths.polyline_dir,
-            segmented_dir=data_paths.segmented_dir,
-        )
-
-
-@dataclass(slots=True)
 class GraphSession:
     graph: SkeletonGraph
     skeleton_path: Path
@@ -75,12 +49,12 @@ def prepare_graph(
     skeleton_filename: str | Path,
     branch_threshold: float,
     *,
-    config: PolylineTabConfig | None = None,
+    data_paths: DataPaths | None = None,
 ) -> GraphPrepResult:
-    cfg = config or PolylineTabConfig()
-    cfg.ensure()
+    paths = data_paths or DataPaths.from_data_dir()
+    paths.ensure_directories()
 
-    skeleton_path = _resolve_filename(skeleton_filename, cfg.skeleton_dir)
+    skeleton_path = _resolve_filename(skeleton_filename, paths.skeleton_dir)
     branch_threshold = max(0.0, float(branch_threshold))
 
     sample_base = canonical_sample_name(skeleton_path)
@@ -92,7 +66,7 @@ def prepare_graph(
     )
 
     graph_filename = prefixed_name("graph", sample_base, ".json")
-    graph_json_path = cfg.graph_dir / graph_filename
+    graph_json_path = paths.graph_dir / graph_filename
     graph_payload = pruned_graph.to_payload()
     pruned_graph.save(graph_json_path)
 
@@ -108,7 +82,7 @@ def prepare_graph(
         skeleton_path,
         annotate_node_ids=leaf_ids,
     )
-    segmented_preview = _load_segmented_preview(sample_base, skeleton_path, cfg.segmented_dir)
+    segmented_preview = _load_segmented_preview(sample_base, skeleton_path, paths.segmented_dir)
     short_edges = _short_edge_summary(pruned_graph, leaf_ids=leaf_ids)
 
     payload = {**graph_payload}
@@ -134,7 +108,7 @@ def prepare_graph(
         skeleton_path=skeleton_path,
         graph_json_path=graph_json_path,
         branch_threshold=branch_threshold,
-        polyline_dir=cfg.polyline_dir,
+        polyline_dir=paths.polyline_dir,
         component_map=component_map,
         sample_base=sample_base,
     )
@@ -279,6 +253,5 @@ def _render_images(
 __all__ = [
     "GraphPrepResult",
     "GraphSession",
-    "PolylineTabConfig",
     "prepare_graph",
 ]

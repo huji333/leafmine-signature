@@ -26,6 +26,7 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 
 COPY --from=deps /app/.venv /app/.venv
 COPY pyproject.toml uv.lock README.md ./
+COPY config.toml ./
 COPY views/ ./views/
 COPY models/ ./models/
 COPY controllers/ ./controllers/

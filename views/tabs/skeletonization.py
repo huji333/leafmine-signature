@@ -8,7 +8,7 @@ from controllers.skeletonization import process_mask, resolve_mask_source
 from controllers.data_paths import DataPaths
 from models.skeletonization import SkeletonizationConfig
 from views.components import file_selector
-from views.config import DataBrowser
+from views.config import DataBrowser, resolve_runtime_paths
 from PIL import Image, ImageFilter, ImageOps
 import numpy as np
 from skimage.measure import label
@@ -23,8 +23,7 @@ def render(
 ) -> None:
     """Upload or reuse segmented masks and inspect the resulting skeleton."""
 
-    cfg = data_paths or DataPaths.from_data_dir()
-    browser = data_browser or DataBrowser(cfg)
+    cfg, browser = resolve_runtime_paths(data_paths, data_browser)
 
     gr.Markdown(
         "Upload a **segmented binary mask** or point to an existing "

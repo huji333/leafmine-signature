@@ -17,8 +17,19 @@ class DataBrowser:
     def skeletonized(self) -> list[str]:
         return _list_files(self.config.skeleton_dir, suffix=".png")
 
-    def polylines(self) -> list[str]:
-        return _list_files(self.config.polyline_dir, suffix=".json")
+def polylines(self) -> list[str]:
+    return _list_files(self.config.polyline_dir, suffix=".json")
+
+
+def resolve_runtime_paths(
+    data_paths: DataPaths | None = None,
+    data_browser: DataBrowser | None = None,
+) -> tuple[DataPaths, DataBrowser]:
+    """Return concrete DataPaths/DataBrowser instances for UI tabs."""
+
+    cfg = data_paths or DataPaths.from_data_dir()
+    browser = data_browser or DataBrowser(cfg)
+    return cfg, browser
 
 
 def _list_files(directory, *, suffix: str, skip_prefix: str | None = None) -> list[str]:
@@ -34,4 +45,4 @@ def _list_files(directory, *, suffix: str, skip_prefix: str | None = None) -> li
     return entries
 
 
-__all__ = ["DataBrowser"]
+__all__ = ["DataBrowser", "resolve_runtime_paths"]
