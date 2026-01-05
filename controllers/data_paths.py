@@ -4,21 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 from controllers.settings import load_data_dir
-
-if TYPE_CHECKING:
-    from models.signature import default_log_signature_csv_path
 
 
 def _default_data_dir() -> Path:
     return load_data_dir()
-
-
-def default_data_subdir(name: str) -> Path:
-    """Return a default subdirectory path under the data directory."""
-    return load_data_dir() / name
 
 
 @dataclass(slots=True)
@@ -64,4 +54,4 @@ class DataPaths:
         )
 
 
-__all__ = ["DataPaths", "default_data_subdir"]
+__all__ = ["DataPaths"]

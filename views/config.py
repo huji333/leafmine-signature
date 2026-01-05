@@ -17,8 +17,8 @@ class DataBrowser:
     def skeletonized(self) -> list[str]:
         return _list_files(self.config.skeleton_dir, suffix=".png")
 
-def polylines(self) -> list[str]:
-    return _list_files(self.config.polyline_dir, suffix=".json")
+    def polylines(self) -> list[str]:
+        return _list_files(self.config.polyline_dir, suffix=".json")
 
 
 def resolve_runtime_paths(

@@ -38,10 +38,6 @@ def render(
         step=1,
         value=4,
     )
-    overwrite_checkbox = gr.Checkbox(
-        label="Overwrite existing CSV rows (recompute even if cached)",
-        value=False,
-    )
 
     run_button = gr.Button("Compute Signatures", variant="primary")
     csv_preview = gr.Dataframe(
@@ -59,7 +55,7 @@ def render(
 
     run_button.click(
         fn=partial(_handle_signatures, cfg),
-        inputs=[polyline_selector, depth_slider, overwrite_checkbox],
+        inputs=[polyline_selector, depth_slider],
         outputs=[csv_preview, status_output],
         show_progress=True,
     )
@@ -84,14 +80,12 @@ def _handle_signatures(
     data_paths: DataPaths,
     selected_files: list[str] | None,
     depth_value: float | int,
-    overwrite: bool,
 ):
     try:
         rows, headers, status = compute_signature_flow(
             data_paths=data_paths,
             selected_files=selected_files,
             depth_value=depth_value,
-            overwrite=overwrite,
         )
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc

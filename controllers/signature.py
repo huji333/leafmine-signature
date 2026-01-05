@@ -11,7 +11,6 @@ from controllers.data_paths import DataPaths
 from models.signature import (
     LogSignatureResult,
     append_log_signature_csv,
-    default_log_signature_csv_path,
     log_signature_from_json,
 )
 
@@ -58,23 +57,22 @@ def compute_signature_flow(
     data_paths: DataPaths,
     selected_files: Sequence[str] | None,
     depth_value: float | int,
-    overwrite: bool,
 ) -> tuple[list[list[str]], list[str], str]:
     if not selected_files:
         raise ValueError("Select at least one polyline JSON before running.")
 
-    cfg = data_paths or DataPaths.from_data_dir()
-    cfg.ensure_directories()
+    cfg = data_paths
+    cfg.ensure_signature_directories()
     depth = int(depth_value)
 
     polylines = [_resolve_polyline_path(entry, cfg.polyline_dir) for entry in selected_files]
-    summary_csv = default_log_signature_csv_path(cfg.signatures_dir)
+    summary_csv = cfg.summary_csv_path()
 
     results, logs = analyze_polylines(
         polylines,
         depth=depth,
         summary_csv=summary_csv,
-        skip_existing=not overwrite,
+        skip_existing=True,
     )
 
     table, headers = _load_csv_preview(summary_csv)

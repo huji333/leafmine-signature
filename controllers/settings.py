@@ -20,12 +20,6 @@ def load_data_dir() -> Path:
     return _resolve_path(configured)
 
 
-def data_subdir(name: str) -> Path:
-    """Convenience helper for subdirectories under the configured data root."""
-
-    return load_data_dir() / name
-
-
 @lru_cache(maxsize=1)
 def _read_config_data_dir() -> str:
     config_path = _project_root() / CONFIG_FILENAME
@@ -54,4 +48,4 @@ def _project_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-__all__ = ["data_subdir", "load_data_dir"]
+__all__ = ["load_data_dir"]
