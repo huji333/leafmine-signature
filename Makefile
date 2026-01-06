@@ -51,7 +51,14 @@ endif
 		uv run --frozen ruff check .
 
 annotation_csv:
-	$(PYTHON) scripts/generate_sample_annotation.py --input-dir "$(SEGMENTED_DIR)" --output "$(ANNOTATION_CSV)" --glob "$(SEGMENTED_GLOB)"
+	@mkdir -p $(DATA_DIR)
+	docker run --rm $(RUN_PLATFORM_FLAG) \
+		-e UV_CACHE_DIR=.uv-cache \
+		-v $(CURDIR):/app \
+		-w /app \
+		$(IMAGE) \
+		uv run --frozen --no-sync python scripts/generate_sample_annotation.py \
+			--glob "$(SEGMENTED_GLOB)"
 
 remove_data:
 	@ANNOTATION_CSV="$(ANNOTATION_CSV)" scripts/remove_data.sh "$(DATA_DIR)"

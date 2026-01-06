@@ -22,7 +22,7 @@ def render_graph_overlay(
     annotate_nodes: bool = False,
     annotate_node_ids: set[int] | None = None,
     label_color: tuple[int, int, int] = (255, 255, 255),
-    label_font_size: int | None = None,
+    label_font_size: int = 0,
 ) -> Image.Image:
     """Draw the graph edges + nodes onto a copy of ``base_image``."""
 
@@ -76,7 +76,7 @@ def render_graph_preview(
     annotate_nodes: bool = False,
     annotate_node_ids: set[int] | None = None,
     label_color: tuple[int, int, int] = (255, 255, 255),
-    label_font_size: int | None = None,
+    label_font_size: int = 0,
 ) -> tuple[Image.Image, Image.Image]:
     """Open the skeleton PNG and return (original, overlay)."""
 
@@ -99,7 +99,7 @@ def render_graph_preview(
 
 def _load_label_font(
     image_size: tuple[int, int],
-    requested_size: int | None,
+    requested_size: int,
 ) -> ImageFont.ImageFont:
     font_size = int(requested_size or 0)
     if font_size <= 0:

@@ -21,24 +21,10 @@ STAGE_PREFIXES: dict[str, str] = {
 }
 
 
-_LEGACY_PREFIXES: tuple[str, ...] = (
-    "mask_",
-    "segmented_",
-    "preprocessed_",
-    "skeleton_",
-    "skeletonized_",
-    "graph_",
-    "polyline_",
-    "route_",
-    "highlight_",
-)
-
-
 def known_prefixes() -> tuple[str, ...]:
-    """Return the known prefixes (canonical + legacy) for sanitizing stems."""
+    """Return the known prefixes for sanitizing stems."""
 
-    canonical = tuple(dict.fromkeys(STAGE_PREFIXES.values()))
-    return canonical + _LEGACY_PREFIXES
+    return tuple(dict.fromkeys(STAGE_PREFIXES.values()))
 
 
 def strip_prefix(value: str, *, extra: Iterable[str] | None = None) -> str:
@@ -76,4 +62,3 @@ def canonical_sample_name(path: Path | str) -> str:
     stem = Path(path).stem
     cleaned = strip_prefix(stem)
     return cleaned or stem
-
