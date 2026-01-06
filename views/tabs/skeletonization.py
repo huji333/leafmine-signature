@@ -4,17 +4,18 @@ from functools import partial
 
 import gradio as gr
 
-from controllers.skeletonization import process_mask, resolve_mask_source
+from controllers.skeletonization import (
+    DEFAULT_SKELETON_CONFIG,
+    SkeletonizationConfig,
+    process_mask,
+    resolve_mask_source,
+)
 from controllers.data_paths import DataPaths
-from models.skeletonization import SkeletonizationConfig
 from views.components import file_selector
-from views.config import DataBrowser
+from views.config import DataBrowser, resolve_runtime_paths
 from PIL import Image, ImageFilter, ImageOps
 import numpy as np
 from skimage.measure import label
-
-DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
-
 
 def render(
     *,
@@ -23,8 +24,7 @@ def render(
 ) -> None:
     """Upload or reuse segmented masks and inspect the resulting skeleton."""
 
-    cfg = data_paths or DataPaths.from_data_dir()
-    browser = data_browser or DataBrowser(cfg)
+    cfg, browser = resolve_runtime_paths(data_paths, data_browser)
 
     gr.Markdown(
         "Upload a **segmented binary mask** or point to an existing "
@@ -39,11 +39,12 @@ def render(
         file_count="single",
     )
     with gr.Row():
-        existing_selector, _ = file_selector(
+        segmented_selector = file_selector(
             label="Or pick an existing segmented filename",
             choices_provider=browser.segmented,
             refresh_label="Refresh segmented list",
         )
+        existing_selector = segmented_selector.dropdown
 
     gr.Markdown("### Skeletonization Settings")
     smooth_radius_input = gr.Slider(
@@ -118,7 +119,7 @@ def _handle_skeletonization(
 
     data_paths.ensure_directories()
     try:
-        mask_image, source_name = resolve_mask_source(
+        mask_image, source_name, existing_mask_path = resolve_mask_source(
             data_paths,
             uploaded_file,
             selected_filename,
@@ -132,12 +133,15 @@ def _handle_skeletonization(
         erode_radius=int(erode_radius),
     )
 
+    persist_mask = uploaded_file is not None
     try:
         result = process_mask(
             mask_image,
             original_name=source_name,
             data_paths=data_paths,
             config=config,
+            persist_mask=persist_mask,
+            existing_mask_path=existing_mask_path,
         )
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc

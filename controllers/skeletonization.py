@@ -8,14 +8,13 @@ from pathlib import Path
 
 from PIL import Image, UnidentifiedImageError
 
-from controllers.artifacts import resolve_segmented_mask_path
+from controllers.artifacts import ensure_flat_stage_identifier, resolve_segmented_mask_path
 from controllers.data_paths import DataPaths
 from models.utils.image_io import save_png
 from models.utils.naming import apply_stage_prefix, strip_prefix
-from models.skeletonization import (
-    SkeletonizationConfig,
-    run_skeletonization,
-)
+from models.skeletonization import SkeletonizationConfig, run_skeletonization
+
+DEFAULT_SKELETON_CONFIG = SkeletonizationConfig()
 
 
 @dataclass(slots=True)
@@ -34,6 +33,8 @@ def process_mask(
     original_name: str,
     data_paths: DataPaths | None = None,
     config: SkeletonizationConfig | None = None,
+    persist_mask: bool = True,
+    existing_mask_path: Path | None = None,
 ) -> SkeletonizationResult:
     """Persist a segmented mask and run the preprocessing + skeletonization pipeline."""
 
@@ -42,9 +43,13 @@ def process_mask(
 
     mask_gray = mask.convert("L")
     sample_base = _derive_sample_base(original_name)
-    mask_path = _save_stage_image(mask_gray, paths.segmented_dir, "segmented", sample_base)
+    if persist_mask or existing_mask_path is None:
+        mask_path = _save_stage_image(mask_gray, paths.segmented_dir, "segmented", sample_base)
+    else:
+        mask_path = existing_mask_path
 
-    artifacts = run_skeletonization(mask_gray, config=config)
+    skeleton_config = config or DEFAULT_SKELETON_CONFIG
+    artifacts = run_skeletonization(mask_gray, config=skeleton_config)
     skeleton = artifacts["skeleton_mask"]
 
     skeleton_path = _save_stage_image(
@@ -66,14 +71,18 @@ def resolve_mask_source(
     data_paths: DataPaths,
     uploaded_file: str | Path | None,
     selected_filename: str | None,
-) -> tuple[Image.Image, str]:
+) -> tuple[Image.Image, str, Path | None]:
     """Return the grayscale mask image to process plus its source name."""
 
     if uploaded_file:
         upload_path = Path(uploaded_file)
-        return _load_grayscale_image(upload_path), upload_path.name
+        return _load_grayscale_image(upload_path), upload_path.name, None
 
     if selected_filename:
+        ensure_flat_stage_identifier(
+            selected_filename,
+            description="Segmented filename",
+        )
         candidate = resolve_segmented_mask_path(
             selected_filename,
             [data_paths.segmented_dir],
@@ -82,7 +91,7 @@ def resolve_mask_source(
             raise ValueError(
                 f"Could not find `{selected_filename}` in {data_paths.segmented_dir}."
             )
-        return _load_grayscale_image(candidate), candidate.name
+        return _load_grayscale_image(candidate), candidate.name, candidate
 
     raise ValueError("Upload a segmented mask or choose an existing filename first.")
 
@@ -120,6 +129,8 @@ def _load_grayscale_image(path: Path) -> Image.Image:
 
 __all__ = [
     "SkeletonizationResult",
+    "SkeletonizationConfig",
+    "DEFAULT_SKELETON_CONFIG",
     "process_mask",
     "resolve_mask_source",
 ]

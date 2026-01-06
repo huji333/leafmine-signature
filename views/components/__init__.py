@@ -1,3 +1,3 @@
-from .file_select import file_selector
+from .file_select import FileSelectorComponents, file_selector
 
-__all__ = ['file_selector']
+__all__ = ["file_selector", "FileSelectorComponents"]

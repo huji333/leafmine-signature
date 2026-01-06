@@ -22,7 +22,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover
 
 
 def default_log_signature_csv_path(
-    output_dir: Path | str = Path("data/logsig"),
+    output_dir: Path | str,
     *,
     timestamp: datetime | None = None,
 ) -> Path:

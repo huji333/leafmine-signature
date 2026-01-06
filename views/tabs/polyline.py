@@ -2,15 +2,11 @@ from __future__ import annotations
 
 import gradio as gr
 
-from controllers.polyline_graph import (
-    GraphSession,
-    PolylineTabConfig,
-    prepare_graph,
-)
+from controllers.polyline_graph import GraphSession, prepare_graph
 from controllers.polyline_route import compute_route_flow
 from controllers.data_paths import DataPaths
 from views.components import file_selector
-from views.config import DataBrowser
+from views.config import DataBrowser, resolve_runtime_paths
 
 
 def render(
@@ -24,21 +20,15 @@ def render(
         "You can also type an absolute path if the file lives elsewhere."
     )
 
-    cfg = data_paths or DataPaths.from_data_dir()
-    browser = data_browser or DataBrowser(cfg)
-    tab_config = PolylineTabConfig(
-        skeleton_dir=cfg.skeleton_dir,
-        graph_dir=cfg.graph_dir,
-        polyline_dir=cfg.polyline_dir,
-        segmented_dir=cfg.segmented_dir,
-    )
+    cfg, browser = resolve_runtime_paths(data_paths, data_browser)
 
     with gr.Row():
-        skeleton_input, _ = file_selector(
+        skeleton_selector = file_selector(
             label="Skeleton filename",
             choices_provider=browser.skeletonized,
             refresh_label="Refresh skeleton list",
         )
+        skeleton_input = skeleton_selector.dropdown
     branch_threshold = gr.Slider(
         label="Branch/loop pruning threshold (px)",
         value=100.0,
@@ -93,9 +83,7 @@ def render(
     )
 
     build_button.click(
-        fn=lambda filename, threshold: _handle_build_graph(
-            tab_config, filename, threshold
-        ),
+        fn=lambda filename, threshold: _handle_build_graph(cfg, filename, threshold),
         inputs=[skeleton_input, branch_threshold],
         outputs=[
             skeleton_preview,
@@ -119,7 +107,7 @@ def render(
 
 
 def _handle_build_graph(
-    tab_config: PolylineTabConfig,
+    data_paths: DataPaths,
     filename: str | None,
     threshold: float | None,
 ) -> tuple:
@@ -127,7 +115,7 @@ def _handle_build_graph(
         raise gr.Error("Enter the skeleton filename first.")
     branch_threshold = float(threshold or 0.0)
     try:
-        result = prepare_graph(filename, branch_threshold, config=tab_config)
+        result = prepare_graph(filename, branch_threshold, data_paths=data_paths)
     except (FileNotFoundError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
 

@@ -51,31 +51,17 @@ endif
 		uv run --frozen ruff check .
 
 annotation_csv:
-	$(PYTHON) scripts/generate_sample_annotation.py --input-dir "$(SEGMENTED_DIR)" --output "$(ANNOTATION_CSV)" --glob "$(SEGMENTED_GLOB)"
+	@mkdir -p $(DATA_DIR)
+	docker run --rm $(RUN_PLATFORM_FLAG) \
+		-e UV_CACHE_DIR=.uv-cache \
+		-v $(CURDIR):/app \
+		-w /app \
+		$(IMAGE) \
+		uv run --frozen --no-sync python scripts/generate_sample_annotation.py \
+			--glob "$(SEGMENTED_GLOB)"
 
 remove_data:
-	@mkdir -p $(DATA_DIR)
-	@echo "Pruning generated artifacts under $(DATA_DIR) (set PURGE=1 to remove segmented/ and signatures/ too)."
-	@set -e; \
-	for entry in $$(/bin/ls -1A $(DATA_DIR) 2>/dev/null); do \
-		case $$entry in \
-			segmented|signatures) \
-				if [ "$$PURGE" = "1" ]; then \
-					echo "Removing $(DATA_DIR)/$$entry"; \
-					/bin/rm -rf "$(DATA_DIR)/$$entry"; \
-				else \
-					echo "Preserving $(DATA_DIR)/$$entry"; \
-					continue; \
-				fi ;; \
-			*) \
-				echo "Removing $(DATA_DIR)/$$entry"; \
-				/bin/rm -rf "$(DATA_DIR)/$$entry"; \
-			;; \
-		esac; \
-	done; \
-	if [ "$$PURGE" != "1" ]; then \
-		/bin/mkdir -p "$(DATA_DIR)/skeletonized" "$(DATA_DIR)/tmp"; \
-	fi
+	@ANNOTATION_CSV="$(ANNOTATION_CSV)" scripts/remove_data.sh "$(DATA_DIR)"
 
 clean:
 	docker image rm $(IMAGE) || true

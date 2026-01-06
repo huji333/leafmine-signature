@@ -8,6 +8,19 @@ from typing import Iterable, Sequence
 from models.utils.naming import canonical_sample_name, prefixed_name
 
 
+def ensure_flat_stage_identifier(identifier: str | Path, *, description: str) -> None:
+    """Ensure ``identifier`` is not a nested relative path."""
+
+    path = Path(identifier)
+    if path.is_absolute():
+        return
+    if len(path.parts) > 1:
+        raise ValueError(
+            f"{description} '{path.as_posix()}' contains directories. "
+            "Store artifacts directly under the stage root or provide an absolute path."
+        )
+
+
 def resolve_stage_artifact_path(
     identifier: str | Path,
     directories: Iterable[Path | str | None],
@@ -114,6 +127,7 @@ def _dedupe_paths(paths: Iterable[Path | str | None]) -> list[Path]:
 
 
 __all__ = [
+    "ensure_flat_stage_identifier",
     "resolve_stage_artifact_path",
     "resolve_segmented_mask_path",
 ]
