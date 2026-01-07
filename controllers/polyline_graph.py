@@ -35,6 +35,7 @@ class GraphSession:
     graph_json_path: Path
     manifest_path: Path
     branch_threshold: float
+    loop_threshold: float
     polyline_dir: Path
     component_map: dict[int, int]
 
@@ -58,6 +59,7 @@ class GraphPrepResult:
 def prepare_graph(
     skeleton_filename: str | Path,
     branch_threshold: float,
+    loop_threshold: float | None = None,
     *,
     data_paths: DataPaths | None = None,
 ) -> GraphPrepResult:
@@ -70,12 +72,18 @@ def prepare_graph(
     )
     skeleton_path = _resolve_filename(skeleton_filename, paths.skeleton_dir)
     branch_threshold = max(0.0, float(branch_threshold))
+    loop_threshold = branch_threshold if loop_threshold is None else max(0.0, float(loop_threshold))
+    should_prune = branch_threshold > 0 or loop_threshold > 0
 
     sample_base = canonical_sample_name(skeleton_path)
     source = _load_graph_source(skeleton_path, sample_base)
     pruned_graph = (
-        prune_short_branches(source.base_graph, branch_threshold)
-        if branch_threshold > 0
+        prune_short_branches(
+            source.base_graph,
+            branch_threshold,
+            loop_threshold=loop_threshold,
+        )
+        if should_prune
         else source.base_graph.copy()
     )
 
@@ -87,6 +95,7 @@ def prepare_graph(
         graph_json_path,
         source,
         branch_threshold,
+        loop_threshold,
         pruned_graph,
     )
 
@@ -97,10 +106,12 @@ def prepare_graph(
 
     leaf_nodes = _leaf_metadata(pruned_graph)
     leaf_ids = {leaf["id"] for leaf in leaf_nodes}
+    junction_ids = _junction_node_ids(pruned_graph)
     skeleton_image, overlay = _render_images(
         pruned_graph,
         skeleton_path,
-        annotate_node_ids=leaf_ids,
+        leaf_ids=leaf_ids,
+        junction_ids=junction_ids,
     )
     segmented_preview = _load_segmented_preview(sample_base, skeleton_path, paths.segmented_dir)
     short_edges = _short_edge_summary(pruned_graph, leaf_ids=leaf_ids)
@@ -110,6 +121,7 @@ def prepare_graph(
         "skeleton_png": str(skeleton_path),
         "graph_json": str(graph_json_path),
         "branch_threshold": branch_threshold,
+        "loop_threshold": loop_threshold,
         "node_count": len(pruned_graph.nodes),
         "edge_count": len(pruned_graph.edges),
         "leaf_nodes": len(leaf_nodes),
@@ -129,6 +141,7 @@ def prepare_graph(
         graph_json_path=graph_json_path,
         manifest_path=manifest_path,
         branch_threshold=branch_threshold,
+        loop_threshold=loop_threshold,
         polyline_dir=paths.polyline_dir,
         component_map=component_map,
     )
@@ -167,6 +180,10 @@ def _leaf_metadata(
             leaves.append({"id": node_id, "x": node.x, "y": node.y})
     leaves.sort(key=lambda item: item["id"])
     return leaves
+
+
+def _junction_node_ids(graph: SkeletonGraph, *, min_degree: int = 3) -> set[int]:
+    return {node_id for node_id in graph.nodes if graph.degree(node_id) >= min_degree}
 
 
 def _short_edge_summary(
@@ -258,16 +275,35 @@ def _render_images(
     graph: SkeletonGraph,
     skeleton_path: Path,
     *,
-    annotate_node_ids: set[int] | None = None,
+    leaf_ids: set[int] | None = None,
+    junction_ids: set[int] | None = None,
 ) -> tuple[Image.Image, Image.Image]:
+    annotate_ids: set[int] | None = None
+    if leaf_ids or junction_ids:
+        annotate_ids = set()
+        if leaf_ids:
+            annotate_ids.update(leaf_ids)
+        if junction_ids:
+            annotate_ids.update(junction_ids)
     return render_graph_preview(
         graph,
         skeleton_path,
         annotate_nodes=True,
-        annotate_node_ids=annotate_node_ids,
-        node_radius=5,
+        annotate_node_ids=annotate_ids,
+        node_radius=4,
         edge_width=3,
-        label_color=(255, 255, 0),
+        node_color=(220, 220, 220),
+        leaf_ids=leaf_ids,
+        junction_ids=junction_ids,
+        leaf_color=(255, 210, 64),
+        junction_color=(64, 196, 255),
+        leaf_radius=6,
+        junction_radius=4,
+        label_color=(255, 255, 255),
+        label_stroke_fill=(0, 0, 0),
+        label_stroke_width=1,
+        leaf_label_scale=0.55,
+        junction_label_scale=0.3,
     )
 
 
@@ -284,6 +320,7 @@ def _write_graph_manifest(
     graph_json_path: Path,
     source: GraphSource,
     branch_threshold: float,
+    loop_threshold: float,
     graph: SkeletonGraph,
 ) -> Path:
     manifest = {
@@ -292,6 +329,7 @@ def _write_graph_manifest(
         "sample_base": source.sample_base,
         "skeleton_png": str(source.skeleton_path),
         "branch_threshold": branch_threshold,
+        "loop_threshold": loop_threshold,
         "node_count": len(graph.nodes),
         "edge_count": len(graph.edges),
         "segmented_filename": prefixed_name("segmented", source.sample_base, ".png"),

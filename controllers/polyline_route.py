@@ -67,6 +67,7 @@ def compute_route_flow(
         "duplicated_edges": duplicated_edges,
         "graph_json": str(session.graph_json_path),
         "branch_threshold": session.branch_threshold,
+        "loop_threshold": session.loop_threshold,
         "visits": [
             {
                 "edge_id": visit.edge_id,
@@ -95,6 +96,7 @@ def compute_route_flow(
     metadata = {
         "graph_json": str(session.graph_json_path),
         "branch_threshold": session.branch_threshold,
+        "loop_threshold": session.loop_threshold,
         "start_node": start_node,
         "goal_node": goal_node,
         "resample_points": int(resample_points),

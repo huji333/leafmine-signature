@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
+from functools import partial
+
 import gradio as gr
 
+from controllers.artifact_status import ActionType, ProcessingStatusService
 from controllers.polyline_graph import GraphSession, prepare_graph
 from controllers.polyline_route import compute_route_flow
 from controllers.data_paths import DataPaths
@@ -21,17 +25,28 @@ def render(
     )
 
     cfg, browser = resolve_runtime_paths(data_paths, data_browser)
+    status_service = ProcessingStatusService(cfg)
 
     with gr.Row():
         skeleton_selector = file_selector(
             label="Skeleton filename",
             choices_provider=browser.skeletonized,
             refresh_label="Refresh skeleton list",
+            status_service=status_service,
+            action_type=ActionType.ROUTE,
+            status_badge="✅ route",
         )
         skeleton_input = skeleton_selector.dropdown
     branch_threshold = gr.Slider(
-        label="Branch/loop pruning threshold (px)",
-        value=100.0,
+        label="Branch pruning threshold (px)",
+        value=10.0,
+        minimum=0.0,
+        maximum=300.0,
+        step=1.0,
+    )
+    loop_threshold = gr.Slider(
+        label="Loop removal threshold (px)",
+        value=10.0,
         minimum=0.0,
         maximum=300.0,
         step=1.0,
@@ -83,8 +98,8 @@ def render(
     )
 
     build_button.click(
-        fn=lambda filename, threshold: _handle_build_graph(cfg, filename, threshold),
-        inputs=[skeleton_input, branch_threshold],
+        fn=lambda filename, branch, loop: _handle_build_graph(cfg, filename, branch, loop),
+        inputs=[skeleton_input, branch_threshold, loop_threshold],
         outputs=[
             skeleton_preview,
             pruned_preview,
@@ -99,9 +114,19 @@ def render(
     )
 
     route_button.click(
-        fn=_handle_compute_route,
+        fn=partial(
+            _handle_compute_route,
+            skeleton_selector.choices_provider,
+        ),
         inputs=[graph_state, start_node, goal_node, resample_points],
-        outputs=[route_json, node_path_json, route_status, route_preview, polyline_path_box],
+        outputs=[
+            route_json,
+            node_path_json,
+            route_status,
+            route_preview,
+            polyline_path_box,
+            skeleton_input,
+        ],
         show_progress=True,
     )
 
@@ -109,13 +134,20 @@ def render(
 def _handle_build_graph(
     data_paths: DataPaths,
     filename: str | None,
-    threshold: float | None,
+    branch_threshold: float | None,
+    loop_threshold: float | None,
 ) -> tuple:
     if not filename:
         raise gr.Error("Enter the skeleton filename first.")
-    branch_threshold = float(threshold or 0.0)
+    branch_value = float(branch_threshold or 0.0)
+    loop_value = float(loop_threshold or 0.0)
     try:
-        result = prepare_graph(filename, branch_threshold, data_paths=data_paths)
+        result = prepare_graph(
+            filename,
+            branch_value,
+            loop_threshold=loop_value,
+            data_paths=data_paths,
+        )
     except (FileNotFoundError, ValueError) as exc:
         raise gr.Error(str(exc)) from exc
 
@@ -123,6 +155,7 @@ def _handle_build_graph(
 
 
 def _handle_compute_route(
+    choices_provider: Callable[[], list[str | tuple[str, str]]],
     session: GraphSession | None,
     start_value: float | None,
     goal_value: float | None,
@@ -147,7 +180,11 @@ def _handle_compute_route(
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
-    return _route_view_payload(result)
+    dropdown_update = gr.update(
+        choices=choices_provider(),
+        value=session.source.skeleton_path.name if session.source else None,
+    )
+    return (*_route_view_payload(result), dropdown_update)
 
 
 def _graph_view_payload(result):

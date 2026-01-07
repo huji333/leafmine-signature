@@ -23,9 +23,9 @@ class SkeletonizationConfig:
     """Tunable parameters for the skeletonization pipeline."""
 
     white_threshold: int = 200
-    smooth_radius: int = 3
-    erode_radius: int = 4
-    hole_area_threshold: int = 100
+    smooth_radius: int = 2
+    erode_radius: int = 1
+    hole_area_threshold: int = 400
 
 
 def run_skeletonization(
