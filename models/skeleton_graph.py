@@ -133,25 +133,39 @@ def build_skeleton_graph(
 
 
 def prune_short_branches(
-    graph: SkeletonGraph, min_branch_length: float
+    graph: SkeletonGraph,
+    min_branch_length: float,
+    *,
+    loop_threshold: float | None = None,
 ) -> SkeletonGraph:
     result = graph.copy()
-    prune_short_branches_inplace(result, min_branch_length)
+    prune_short_branches_inplace(
+        result,
+        min_branch_length,
+        loop_threshold=loop_threshold,
+    )
     return result
 
 
 def prune_short_branches_inplace(
     graph: SkeletonGraph,
     min_branch_length: float,
+    *,
+    loop_threshold: float | None = None,
 ) -> None:
-    threshold = float(min_branch_length)
-    if threshold <= 0:
+    branch_threshold = float(min_branch_length)
+    loop_threshold = branch_threshold if loop_threshold is None else float(loop_threshold)
+    if branch_threshold <= 0 and (loop_threshold is None or loop_threshold <= 0):
         return
-    _contract_short_internal_edges(graph, threshold)
+    if branch_threshold > 0:
+        _contract_short_internal_edges(graph, branch_threshold)
     while True:
         graph.refresh_degrees()
-        removed = _trim_short_leaves(graph, threshold)
-        removed |= _remove_short_loops(graph, threshold)
+        removed = False
+        if branch_threshold > 0:
+            removed |= _trim_short_leaves(graph, branch_threshold)
+        if loop_threshold is not None and loop_threshold > 0:
+            removed |= _remove_short_loops(graph, loop_threshold)
         _cleanup_isolated_nodes(graph)
         if not removed:
             break

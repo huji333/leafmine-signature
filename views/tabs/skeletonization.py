@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from functools import partial
 
 import gradio as gr
 
+from controllers.artifact_status import ActionType, ProcessingStatusService
 from controllers.skeletonization import (
     DEFAULT_SKELETON_CONFIG,
     SkeletonizationConfig,
@@ -25,6 +27,7 @@ def render(
     """Upload or reuse segmented masks and inspect the resulting skeleton."""
 
     cfg, browser = resolve_runtime_paths(data_paths, data_browser)
+    status_service = ProcessingStatusService(cfg)
 
     gr.Markdown(
         "Upload a **segmented binary mask** or point to an existing "
@@ -43,6 +46,9 @@ def render(
             label="Or pick an existing segmented filename",
             choices_provider=browser.segmented,
             refresh_label="Refresh segmented list",
+            status_service=status_service,
+            action_type=ActionType.SKELETON,
+            status_badge="✅ skeleton",
         )
         existing_selector = segmented_selector.dropdown
 
@@ -98,7 +104,12 @@ def render(
     ]
 
     run_button.click(
-        fn=partial(_handle_skeletonization, cfg, browser),
+        fn=partial(
+            _handle_skeletonization,
+            cfg,
+            browser,
+            segmented_selector.choices_provider,
+        ),
         inputs=run_inputs,
         outputs=run_outputs,
         show_progress=True,
@@ -109,6 +120,7 @@ def render(
 def _handle_skeletonization(
     data_paths: DataPaths,
     data_browser: DataBrowser,
+    choices_provider: Callable[[], list[str | tuple[str, str]]],
     selected_filename: str | None,
     uploaded_file: str | None,
     smooth_radius: float | int,
@@ -154,7 +166,7 @@ def _handle_skeletonization(
         f"erode={config.erode_radius})."
     )
     dropdown_update = gr.update(
-        choices=data_browser.segmented(),
+        choices=choices_provider(),
         value=result.mask_path.name,
     )
 
