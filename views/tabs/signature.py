@@ -8,7 +8,7 @@ from controllers.signature import (
     compute_signature_flow,
 )
 from controllers.data_paths import DataPaths
-from views.config import DataBrowser, resolve_runtime_paths
+from views.config import DataBrowser, reconcile_selection, resolve_runtime_paths
 
 
 def render(
@@ -68,11 +68,7 @@ def _refresh_polylines(
     choices = data_browser.polylines()
     if not choices:
         return gr.update(choices=[], value=[])
-
-    current = current_selection or []
-    value = [item for item in current if item in choices]
-    if not value:
-        value = choices
+    value = reconcile_selection(choices, current_selection)
     return gr.update(choices=choices, value=value)
 
 

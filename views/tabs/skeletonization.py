@@ -6,6 +6,7 @@ from functools import partial
 import gradio as gr
 
 from controllers.artifact_status import ActionType, ProcessingStatusService
+from controllers.pipeline import run_pipeline_flow
 from controllers.skeletonization import (
     DEFAULT_SKELETON_CONFIG,
     SkeletonizationConfig,
@@ -13,8 +14,9 @@ from controllers.skeletonization import (
     resolve_mask_source,
 )
 from controllers.data_paths import DataPaths
+from models.utils.naming import canonical_sample_name, prefixed_name
 from views.components import file_selector
-from views.config import DataBrowser, resolve_runtime_paths
+from views.config import DataBrowser, reconcile_selection, resolve_runtime_paths
 from PIL import Image, ImageFilter, ImageOps
 import numpy as np
 from skimage.measure import label
@@ -107,7 +109,6 @@ def render(
         fn=partial(
             _handle_skeletonization,
             cfg,
-            browser,
             segmented_selector.choices_provider,
         ),
         inputs=run_inputs,
@@ -116,10 +117,69 @@ def render(
     )
     # file_selector already wires refresh behavior; no extra click handler needed.
 
+    with gr.Accordion("Bulk Skeletonization", open=False):
+        gr.Markdown(
+            "Run skeletonization over multiple segmented masks at once. "
+            "This uses the same preprocessing settings above."
+        )
+
+        bulk_upload = gr.File(
+            label="Upload segmented masks (batch)",
+            file_types=["image"],
+            file_count="multiple",
+            type="filepath",
+        )
+
+        initial_choices = browser.segmented()
+        show_unprocessed_default = True
+        if show_unprocessed_default:
+            initial_choices = _filter_unprocessed(cfg, initial_choices)
+        show_unprocessed = gr.Checkbox(
+            label="Show only unprocessed",
+            value=show_unprocessed_default,
+        )
+        bulk_selector = gr.CheckboxGroup(
+            label="Segmented mask files",
+            choices=initial_choices,
+            value=initial_choices,
+        )
+        bulk_refresh = gr.Button("Refresh segmented list")
+
+        bulk_run = gr.Button("Run Bulk Skeletonization", variant="primary")
+        bulk_table = gr.Dataframe(
+            headers=None,
+            label="Batch results",
+            interactive=False,
+        )
+        bulk_status = gr.Markdown("")
+
+        bulk_refresh.click(
+            fn=partial(_refresh_bulk_segmented, cfg, browser),
+            inputs=[bulk_selector, show_unprocessed],
+            outputs=[bulk_selector],
+        )
+        show_unprocessed.change(
+            fn=partial(_refresh_bulk_segmented, cfg, browser),
+            inputs=[bulk_selector, show_unprocessed],
+            outputs=[bulk_selector],
+        )
+
+        bulk_run.click(
+            fn=partial(_handle_bulk, cfg),
+            inputs=[
+                bulk_selector,
+                bulk_upload,
+                smooth_radius_input,
+                hole_area_input,
+                erode_radius_input,
+            ],
+            outputs=[bulk_table, bulk_status],
+            show_progress=True,
+        )
+
 
 def _handle_skeletonization(
     data_paths: DataPaths,
-    data_browser: DataBrowser,
     choices_provider: Callable[[], list[str | tuple[str, str]]],
     selected_filename: str | None,
     uploaded_file: str | None,
@@ -177,6 +237,58 @@ def _handle_skeletonization(
         status,
         dropdown_update,
     )
+
+
+def _refresh_bulk_segmented(
+    data_paths: DataPaths,
+    data_browser: DataBrowser,
+    current_selection: list[str] | None,
+    show_unprocessed: bool,
+) -> gr.CheckboxGroup:
+    choices = data_browser.segmented()
+    if show_unprocessed:
+        choices = _filter_unprocessed(data_paths, choices)
+    if not choices:
+        return gr.update(choices=[], value=[])
+    value = reconcile_selection(choices, current_selection)
+    return gr.update(choices=choices, value=value)
+
+
+def _filter_unprocessed(data_paths: DataPaths, choices: list[str]) -> list[str]:
+    filtered: list[str] = []
+    for entry in choices:
+        sample_id = canonical_sample_name(entry)
+        skeleton_path = data_paths.skeleton_dir / prefixed_name(
+            "skeletonized", sample_id, ".png"
+        )
+        if not skeleton_path.exists():
+            filtered.append(entry)
+    return filtered
+
+
+def _handle_bulk(
+    data_paths: DataPaths,
+    selected_files: list[str] | None,
+    uploaded_files: list[str] | None,
+    smooth_radius: float | int,
+    hole_area: float | int,
+    erode_radius: float | int,
+):
+    try:
+        rows, headers, status = run_pipeline_flow(
+            data_paths=data_paths,
+            selected_files=selected_files,
+            uploaded_files=uploaded_files,
+            smooth_radius=smooth_radius,
+            hole_area=hole_area,
+            erode_radius=erode_radius,
+            skip_existing_skeleton=True,
+        )
+    except ValueError as exc:
+        raise gr.Error(str(exc)) from exc
+
+    table_update = gr.update(value=rows, headers=headers)
+    return table_update, status
 
 
 def _render_skeleton_overlay(mask_image: Image.Image, skeleton_image: Image.Image) -> Image.Image:

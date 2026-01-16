@@ -12,11 +12,7 @@ from PIL import Image
 from controllers.artifacts import ensure_flat_stage_identifier, resolve_segmented_mask_path
 from controllers.data_paths import DataPaths
 from models.graph_render import render_graph_preview
-from models.skeleton_graph import (
-    SkeletonGraph,
-    build_skeleton_graph,
-    prune_short_branches,
-)
+from models.skeleton_graph import SkeletonGraph, build_skeleton_graph, prune_short_branches
 from models.utils.image_io import load_image
 from models.utils.naming import canonical_sample_name, prefixed_name
 
@@ -48,7 +44,6 @@ class GraphPrepResult:
     graph_payload: dict[str, object]
     graph_json_path: Path
     manifest_path: Path
-    leaf_nodes: list[dict[str, int]]
     short_edges: list[dict[str, float | int]]
     default_start: int | None
     default_goal: int | None
@@ -153,7 +148,6 @@ def prepare_graph(
         graph_payload=payload,
         graph_json_path=graph_json_path,
         manifest_path=manifest_path,
-        leaf_nodes=leaf_nodes,
         short_edges=short_edges,
         default_start=defaults[0],
         default_goal=defaults[1],
