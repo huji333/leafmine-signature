@@ -1,4 +1,4 @@
-"""Log-signature helpers built on top of :mod:`iisignature`."""
+"""Log-signature helpers built on top of :mod:`roughpy`."""
 
 from __future__ import annotations
 
@@ -14,10 +14,10 @@ import numpy as np
 from .utils.naming import canonical_sample_name, prefixed_name
 
 try:  # pragma: no cover - allow importing without optional dependency
-    import iisignature
+    import roughpy as rp
 except ModuleNotFoundError as exc:  # pragma: no cover
     raise ModuleNotFoundError(
-        "iisignature is required for models.signature; install it via `uv pip install iisignature`."
+        "roughpy is required for models.signature; install it via `uv pip install roughpy`."
     ) from exc
 
 
@@ -54,16 +54,16 @@ class LogSignatureResult:
 
 
 @lru_cache(maxsize=None)
-def _prepared_logsigs(dimension: int, depth: int):
-    """Cache iisignature.prepare results per (dimension, depth)."""
+def _logsig_context(dimension: int, depth: int):
+    """Cache roughpy contexts per (dimension, depth)."""
 
-    return iisignature.prepare(int(dimension), int(depth))
+    return rp.get_context(width=int(dimension), depth=int(depth), coeffs=rp.DPReal)
 
 
 def log_signature_from_json(
     polyline_json: Path,
     *,
-    depth: int = 4,
+    depth: int = 3,
 ) -> LogSignatureResult:
     """Load a resampled polyline JSON payload and compute its log signature."""
 
@@ -145,10 +145,15 @@ def _compute_log_signature(points: np.ndarray, depth: int) -> np.ndarray:
     if dimension <= 0:
         raise ValueError("Polyline points must have a positive dimension.")
     if dimension < 2:
-        raise ValueError("iisignature requires polyline dimension >= 2.")
-    double_points = points.astype(np.float64, copy=False)
-    prepared = _prepared_logsigs(dimension, depth)
-    vector = iisignature.logsig(double_points, prepared)
+        raise ValueError("Log-signature requires polyline dimension >= 2.")
+    if points.shape[0] < 2:
+        raise ValueError("Polyline must contain at least two points.")
+
+    increments = np.diff(points.astype(np.float64, copy=False), axis=0)
+    ctx = _logsig_context(dimension, depth)
+    interval = rp.RealInterval(0.0, float(increments.shape[0]))
+    stream = rp.LieIncrementStream.from_increments(increments, ctx=ctx, resolution=0)
+    vector = stream.log_signature(interval)
     return np.asarray(vector, dtype=np.float64)
 
 

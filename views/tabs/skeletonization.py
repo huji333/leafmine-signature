@@ -6,20 +6,19 @@ from functools import partial
 import gradio as gr
 
 from controllers.artifact_status import ActionType, ProcessingStatusService
-from controllers.pipeline import run_pipeline_flow
+from controllers.bulk_skeletonization import run_bulk_skeletonization
 from controllers.skeletonization import (
     DEFAULT_SKELETON_CONFIG,
     SkeletonizationConfig,
     process_mask,
+    render_skeleton_overlay,
     resolve_mask_source,
+    summarize_components,
 )
 from controllers.data_paths import DataPaths
-from models.utils.naming import canonical_sample_name, prefixed_name
+from models.utils.naming import canonical_sample_name, prefixed_name, stage_spec
 from views.components import file_selector
 from views.config import DataBrowser, reconcile_selection, resolve_runtime_paths
-from PIL import Image, ImageFilter, ImageOps
-import numpy as np
-from skimage.measure import label
 
 def render(
     *,
@@ -31,9 +30,10 @@ def render(
     cfg, browser = resolve_runtime_paths(data_paths, data_browser)
     status_service = ProcessingStatusService(cfg)
 
+    segmented_glob = stage_spec("segmented").glob
     gr.Markdown(
         "Upload a **segmented binary mask** or point to an existing "
-        "`data/segmented/segmented_*.png`. Uploaded files are persisted with the "
+        f"`data/segmented/{segmented_glob}`. Uploaded files are persisted with the "
         "canonical `segmented_` prefix automatically. Use the controls below to tune "
         "preprocessing before moving on to routing/log-signatures."
     )
@@ -218,8 +218,8 @@ def _handle_skeletonization(
     except ValueError as exc:
         raise gr.Error(str(exc)) from exc
 
-    overlay = _render_skeleton_overlay(result.mask_image, result.skeleton_image)
-    component_msg = _summarize_components(result.skeleton_image)
+    overlay = render_skeleton_overlay(result.mask_image, result.skeleton_image)
+    component_msg = summarize_components(result.skeleton_image)
     status = (
         f"Saved `{result.mask_path.name}` -> `{result.skeleton_path.name}` "
         f"(closing={config.smooth_radius}, hole<={config.hole_area_threshold}, "
@@ -275,7 +275,7 @@ def _handle_bulk(
     erode_radius: float | int,
 ):
     try:
-        rows, headers, status = run_pipeline_flow(
+        rows, headers, status = run_bulk_skeletonization(
             data_paths=data_paths,
             selected_files=selected_files,
             uploaded_files=uploaded_files,
@@ -289,41 +289,6 @@ def _handle_bulk(
 
     table_update = gr.update(value=rows, headers=headers)
     return table_update, status
-
-
-def _render_skeleton_overlay(mask_image: Image.Image, skeleton_image: Image.Image) -> Image.Image:
-    """Overlay a thickened skeleton on the mask for quick QA."""
-
-    base = Image.new("RGBA", mask_image.size, (0, 0, 0, 255))
-
-    mask_l = ImageOps.autocontrast(mask_image)
-    mask_alpha = mask_l.point(lambda value: int(180 if value > 0 else 0))
-    mask_overlay = Image.new("RGBA", mask_image.size, (180, 180, 180, 0))
-    mask_overlay.putalpha(mask_alpha)
-    combined = Image.alpha_composite(base, mask_overlay)
-
-    thick = skeleton_image.filter(ImageFilter.MaxFilter(size=5))
-    skeleton_alpha = thick.point(lambda value: 255 if value > 0 else 0)
-    skeleton_overlay = Image.new("RGBA", mask_image.size, (255, 64, 64, 0))
-    skeleton_overlay.putalpha(skeleton_alpha)
-    combined = Image.alpha_composite(combined, skeleton_overlay)
-
-    return combined.convert("RGB")
-
-
-def _summarize_components(skeleton_image: Image.Image) -> str:
-    binary = np.asarray(skeleton_image, dtype=np.uint8) > 0
-    if not binary.any():
-        return "#### Connected components: 0  \n(no skeleton pixels detected)"
-
-    labeled = label(binary, connectivity=2)
-    components = int(labeled.max())
-    if components <= 1:
-        return "#### Connected components: 1  \n(single continuous skeleton)"
-    return (
-        f"### ⚠️ Connected components: {components}\n"
-        "Multiple disjoint branches detected — consider easing preprocessing."
-    )
 
 
 __all__ = ["render"]

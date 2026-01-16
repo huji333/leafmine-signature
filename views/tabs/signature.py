@@ -36,7 +36,7 @@ def render(
         minimum=1,
         maximum=6,
         step=1,
-        value=4,
+        value=3,
     )
 
     run_button = gr.Button("Compute Signatures", variant="primary")

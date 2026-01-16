@@ -1,18 +1,7 @@
-# deps image: build toolchain + Python deps
+# deps image: Python deps
 FROM ghcr.io/astral-sh/uv:python3.13-bookworm AS deps
 
-ARG DEBIAN_FRONTEND=noninteractive
-ARG BUILD_ESSENTIAL_VERSION=12.9
-ARG PYTHON_DEV_VERSION=3.11.2-1+b1
-
 WORKDIR /app
-
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential=${BUILD_ESSENTIAL_VERSION} \
-        python3-dev=${PYTHON_DEV_VERSION} \
-        libboost-python-dev \
-    && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml uv.lock README.md ./
 
