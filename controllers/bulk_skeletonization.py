@@ -15,7 +15,7 @@ from controllers.skeletonization import (
 from models.utils.naming import canonical_sample_name, prefixed_name
 
 
-def run_pipeline_flow(
+def run_bulk_skeletonization(
     *,
     data_paths: DataPaths,
     selected_files: Sequence[str] | None,
@@ -76,10 +76,8 @@ def run_pipeline_flow(
             logs=logs,
         )
 
-    summary = (
-        f"Processed {len(selected_files)} file(s): ok {ok}, "
-        f"skipped {skipped}, errors {errors}."
-    )
+    total_count = len(selected_files) + len(uploaded_files)
+    summary = f"Processed {total_count} file(s): ok {ok}, skipped {skipped}, errors {errors}."
     config_line = (
         "Skeleton config: "
         f"closing={skeleton_config.smooth_radius}, "
@@ -185,4 +183,4 @@ def _process_entry(
     return rows, ok, skipped, errors
 
 
-__all__ = ["run_pipeline_flow"]
+__all__ = ["run_bulk_skeletonization"]

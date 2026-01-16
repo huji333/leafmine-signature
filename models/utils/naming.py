@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -19,6 +20,58 @@ STAGE_PREFIXES: dict[str, str] = {
     "polyline": "polyline_",
     "route": "route_",
 }
+
+
+@dataclass(frozen=True, slots=True)
+class StageSpec:
+    """Metadata describing a pipeline stage's on-disk representation."""
+
+    name: str
+    prefix: str
+    default_suffix: str
+    glob: str
+
+
+STAGE_ALIASES: dict[str, str] = {
+    "mask": "segmented",
+    "skeleton": "skeletonized",
+}
+
+STAGE_SPECS: dict[str, StageSpec] = {
+    "segmented": StageSpec("segmented", STAGE_PREFIXES["segmented"], ".png", "segmented_*.png"),
+    "preprocessed": StageSpec(
+        "preprocessed",
+        STAGE_PREFIXES["preprocessed"],
+        ".png",
+        "preprocessed_*.png",
+    ),
+    "skeletonized": StageSpec(
+        "skeletonized",
+        STAGE_PREFIXES["skeletonized"],
+        ".png",
+        "skeletonized_*.png",
+    ),
+    "graph": StageSpec("graph", STAGE_PREFIXES["graph"], ".json", "graph_*.json"),
+    "polyline": StageSpec("polyline", STAGE_PREFIXES["polyline"], ".json", "polyline_*.json"),
+    "route": StageSpec("route", STAGE_PREFIXES["route"], ".json", "route_*.json"),
+}
+
+
+def canonical_stage_name(stage: str) -> str:
+    """Return the canonical stage name (resolving aliases)."""
+
+    key = stage.strip().lower()
+    return STAGE_ALIASES.get(key, key)
+
+
+def stage_spec(stage: str) -> StageSpec:
+    """Return the stage metadata for ``stage``."""
+
+    name = canonical_stage_name(stage)
+    spec = STAGE_SPECS.get(name)
+    if spec is None:  # pragma: no cover - developer errors
+        raise KeyError(f"Unknown stage '{stage}'")
+    return spec
 
 
 def known_prefixes() -> tuple[str, ...]:
@@ -43,7 +96,7 @@ def apply_stage_prefix(stage: str, base: str) -> str:
     """Return ``base`` prefixed for ``stage`` (ensuring no duplicate prefixes)."""
 
     try:
-        prefix = STAGE_PREFIXES[stage]
+        prefix = STAGE_PREFIXES[canonical_stage_name(stage)]
     except KeyError as exc:  # pragma: no cover - developer errors
         raise KeyError(f"Unknown stage '{stage}'") from exc
     cleaned = strip_prefix(base)

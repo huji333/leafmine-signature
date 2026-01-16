@@ -18,13 +18,13 @@ Asset pipeline for calculating log signatures of curvilinear leaf mines.
 
 ## Guided Pipeline Flow (UI Only)
 
-1. **Skeletonize Mask tab** — upload a new segmented PNG (or pick an existing `segmented_*.png`). Uploaded masks are persisted automatically, previews highlight the skeleton, and multi-component skeletons are flagged so you can tweak preprocessing before moving on.
+1. **Skeletonize Mask tab** — upload a new segmented PNG (or pick an existing one). Uploaded masks are persisted automatically, previews highlight the skeleton, and multi-component skeletons are flagged so you can tweak preprocessing before moving on.
 2. **Route Builder tab** — select a skeleton from `data/skeletonized/`, independently tune branch and loop pruning thresholds, inspect the pruned graph, and compute a traversal. Start/goal defaults are suggested per component, and the generated polyline JSON lands in `data/polylines/`.
 3. **Signatures tab** — choose any subset of stored polylines, set the depth, and click *Compute Signatures*. Each run writes to a brand-new CSV named `data/logsig/logsignatures_<timestamp>.csv`, mirroring the older CLI behavior but entirely from the UI.
 
 ## Skeletonize Masks Quickly
 
-The **Skeletonize Mask** tab lets you upload a fresh segmented mine or select an existing `segmented_*.png` from `data/segmented/`. Every upload is persisted with the canonical prefix, the preview thickens the skeleton overlay for quick QA, and the tab flags multi-component skeletons before you move on to routing.
+The **Skeletonize Mask** tab lets you upload a fresh segmented mine or select an existing file from `data/segmented/`. Every upload is persisted with the canonical prefix, the preview thickens the skeleton overlay for quick QA, and the tab flags multi-component skeletons before you move on to routing.
 
 ## Batch Signatures In-UI
 

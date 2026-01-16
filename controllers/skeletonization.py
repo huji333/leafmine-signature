@@ -127,10 +127,54 @@ def _load_grayscale_image(path: Path) -> Image.Image:
         raise ValueError(f"{path} is not a valid image file.") from exc
 
 
+def render_skeleton_overlay(mask_image: Image.Image, skeleton_image: Image.Image) -> Image.Image:
+    """Overlay a thickened skeleton on the mask for quick QA."""
+
+    from PIL import ImageFilter, ImageOps
+
+    base = Image.new("RGBA", mask_image.size, (0, 0, 0, 255))
+
+    mask_l = ImageOps.autocontrast(mask_image)
+    mask_alpha = mask_l.point(lambda value: int(180 if value > 0 else 0))
+    mask_overlay = Image.new("RGBA", mask_image.size, (180, 180, 180, 0))
+    mask_overlay.putalpha(mask_alpha)
+    combined = Image.alpha_composite(base, mask_overlay)
+
+    thick = skeleton_image.filter(ImageFilter.MaxFilter(size=5))
+    skeleton_alpha = thick.point(lambda value: 255 if value > 0 else 0)
+    skeleton_overlay = Image.new("RGBA", mask_image.size, (255, 64, 64, 0))
+    skeleton_overlay.putalpha(skeleton_alpha)
+    combined = Image.alpha_composite(combined, skeleton_overlay)
+
+    return combined.convert("RGB")
+
+
+def summarize_components(skeleton_image: Image.Image) -> str:
+    """Return a markdown summary of connected components in a skeleton image."""
+
+    import numpy as np
+    from skimage.measure import label
+
+    binary = np.asarray(skeleton_image, dtype=np.uint8) > 0
+    if not binary.any():
+        return "#### Connected components: 0  \n(no skeleton pixels detected)"
+
+    labeled = label(binary, connectivity=2)
+    components = int(labeled.max())
+    if components <= 1:
+        return "#### Connected components: 1  \n(single continuous skeleton)"
+    return (
+        f"### ⚠️ Connected components: {components}\n"
+        "Multiple disjoint branches detected — consider easing preprocessing."
+    )
+
+
 __all__ = [
     "SkeletonizationResult",
     "SkeletonizationConfig",
     "DEFAULT_SKELETON_CONFIG",
     "process_mask",
     "resolve_mask_source",
+    "render_skeleton_overlay",
+    "summarize_components",
 ]

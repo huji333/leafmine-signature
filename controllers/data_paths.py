@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from controllers.settings import load_data_dir
-from models.utils.naming import canonical_sample_name
+from models.utils.naming import canonical_sample_name, canonical_stage_name, stage_spec
 
 
 def _default_data_dir() -> Path:
@@ -41,6 +41,62 @@ class DataPaths:
         from models.signature import default_log_signature_csv_path
 
         return default_log_signature_csv_path(self.signatures_dir)
+
+    def stage_dir(self, stage: str) -> Path:
+        """Return the directory that stores artifacts for ``stage``."""
+
+        name = canonical_stage_name(stage)
+        if name in {"segmented", "preprocessed"}:
+            return self.segmented_dir
+        if name == "skeletonized":
+            return self.skeleton_dir
+        if name in {"polyline", "route"}:
+            return self.polyline_dir
+        if name == "graph":
+            return self.graph_dir
+        if name == "logsig":
+            return self.signatures_dir
+        raise KeyError(f"Unknown stage '{stage}'")
+
+    def list_stage_paths(
+        self,
+        stage: str,
+        *,
+        skip_prefix: str | None = None,
+    ) -> list[Path]:
+        """Return artifact paths for ``stage``."""
+
+        spec = stage_spec(stage)
+        directory = self.stage_dir(stage)
+        return fetch_artifact_paths(directory, spec.glob, skip_prefix=skip_prefix)
+
+    def list_stage_names(
+        self,
+        stage: str,
+        *,
+        skip_prefix: str | None = None,
+    ) -> list[str]:
+        """Return artifact filenames for ``stage``."""
+
+        return [path.name for path in self.list_stage_paths(stage, skip_prefix=skip_prefix)]
+
+    def segmented_names(self) -> list[str]:
+        """Return segmented mask filenames (excluding preprocessed variants)."""
+
+        return self.list_stage_names(
+            "segmented",
+            skip_prefix=stage_spec("preprocessed").prefix,
+        )
+
+    def skeletonized_names(self) -> list[str]:
+        """Return skeletonized mask filenames."""
+
+        return self.list_stage_names("skeletonized")
+
+    def polyline_names(self) -> list[str]:
+        """Return polyline JSON filenames."""
+
+        return self.list_stage_names("polyline")
 
     @classmethod
     def from_data_dir(cls, data_dir: Path | None = None) -> DataPaths:

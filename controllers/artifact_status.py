@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Iterable
 
 from controllers.data_paths import DataPaths, fetch_artifact_paths
-from models.utils.naming import canonical_sample_name
+from models.utils.naming import canonical_sample_name, stage_spec
 
 
 class ActionType(Enum):
@@ -25,8 +25,8 @@ class _ActionSpec:
 
 
 _ACTION_SPECS: dict[ActionType, _ActionSpec] = {
-    ActionType.SKELETON: _ActionSpec("skeleton_dir", "skeletonized_*.png"),
-    ActionType.ROUTE: _ActionSpec("polyline_dir", "polyline_*.json"),
+    ActionType.SKELETON: _ActionSpec("skeleton_dir", stage_spec("skeletonized").glob),
+    ActionType.ROUTE: _ActionSpec("polyline_dir", stage_spec("polyline").glob),
 }
 
 

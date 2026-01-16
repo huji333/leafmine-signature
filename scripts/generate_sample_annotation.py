@@ -12,7 +12,10 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from controllers.data_paths import list_canonical_sample_ids  # noqa: E402
+from controllers.data_paths import DataPaths, list_canonical_sample_ids  # noqa: E402
+from models.utils.naming import stage_spec  # noqa: E402
+
+SEGMENTED_SPEC = stage_spec("segmented")
 
 
 def derive_sample_ids(directory: Path, pattern: str) -> list[str]:
@@ -76,11 +79,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Upsert sample annotations derived from segmented PNG filenames."
     )
+    data_paths = DataPaths.from_data_dir()
     parser.add_argument(
         "-i",
         "--input-dir",
         type=Path,
-        default=REPO_ROOT / "data" / "segmented",
+        default=data_paths.segmented_dir,
         help="Directory containing segmented PNGs (default: data/segmented).",
     )
     parser.add_argument(
@@ -92,8 +96,8 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     parser.add_argument(
         "--glob",
-        default="segmented_*.png",
-        help="Glob pattern for selecting files (default: segmented_*.png).",
+        default=SEGMENTED_SPEC.glob,
+        help=f"Glob pattern for selecting files (default: {SEGMENTED_SPEC.glob}).",
     )
     return parser.parse_args(argv)
 

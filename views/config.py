@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from controllers.data_paths import DataPaths, fetch_artifact_paths
+from controllers.data_paths import DataPaths
 
 
 @dataclass(slots=True)
@@ -12,29 +12,13 @@ class DataBrowser:
     config: DataPaths
 
     def segmented(self) -> list[str]:
-        return _artifact_names(
-            fetch_artifact_paths(
-                self.config.segmented_dir,
-                "*.png",
-                skip_prefix="preprocessed_",
-            )
-        )
+        return self.config.segmented_names()
 
     def skeletonized(self) -> list[str]:
-        return _artifact_names(
-            fetch_artifact_paths(
-                self.config.skeleton_dir,
-                "*.png",
-            )
-        )
+        return self.config.skeletonized_names()
 
     def polylines(self) -> list[str]:
-        return _artifact_names(
-            fetch_artifact_paths(
-                self.config.polyline_dir,
-                "*.json",
-            )
-        )
+        return self.config.polyline_names()
 
 
 def resolve_runtime_paths(
@@ -46,10 +30,6 @@ def resolve_runtime_paths(
     cfg = data_paths or DataPaths.from_data_dir()
     browser = data_browser or DataBrowser(cfg)
     return cfg, browser
-
-
-def _artifact_names(paths) -> list[str]:
-    return [path.name for path in paths]
 
 
 def reconcile_selection(choices: list[str], current_selection: list[str] | None) -> list[str]:

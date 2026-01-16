@@ -368,15 +368,6 @@ wheels = [
 ]
 
 [[package]]
-name = "iisignature"
-version = "0.24"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "numpy" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/5e/ee/f94dd13bfec5c6f2871f40a0eda9102a3e03fe914140e0ce204ad2d75c38/iisignature-0.24.tar.gz", hash = "sha256:0b9314c6e8b80487faf323191fb35986ad4226e86b0c67cf0a3b2939b695b9c6", size = 1253992, upload-time = "2019-12-01T15:26:49.83Z" }
-
-[[package]]
 name = "imageio"
 version = "2.37.2"
 source = { registry = "https://pypi.org/simple" }
@@ -419,21 +410,21 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "gradio" },
-    { name = "iisignature" },
     { name = "numpy" },
     { name = "pillow" },
-    { name = "scikit-image" },
+    { name = "roughpy" },
     { name = "ruff" },
+    { name = "scikit-image" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "gradio", specifier = ">=5.49.1" },
-    { name = "iisignature", specifier = ">=0.24" },
     { name = "numpy", specifier = ">=2.1.0" },
     { name = "pillow", specifier = ">=10.4.0" },
-    { name = "scikit-image", specifier = ">=0.24.0" },
+    { name = "roughpy" },
     { name = "ruff", specifier = ">=0.14.1,<0.15" },
+    { name = "scikit-image", specifier = ">=0.24.0" },
 ]
 
 [[package]]
@@ -861,6 +852,21 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/fb/d2/8920e102050a0de7bfabeb4c4614a49248cf8d5d7a8d01885fbb24dc767a/rich-14.2.0.tar.gz", hash = "sha256:73ff50c7c0c1c77c8243079283f4edb376f0f6442433aecb8ce7e6d0b92d1fe4", size = 219990, upload-time = "2025-10-09T14:16:53.064Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/25/7a/b0178788f8dc6cafce37a212c99565fa1fe7872c70c6c9c1e1a372d9d88f/rich-14.2.0-py3-none-any.whl", hash = "sha256:76bc51fe2e57d2b1be1f96c524b890b816e334ab4c1e45888799bfaab0021edd", size = 243393, upload-time = "2025-10-09T14:16:51.245Z" },
+]
+
+[[package]]
+name = "roughpy"
+version = "0.2.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1f/44/6b0850782166b59b6ebb1fe04659055aa6cbd91d4c25ce73a67ad3fe030a/roughpy-0.2.0.tar.gz", hash = "sha256:00603938ea24d0f3eae5f5e8de2ae8400f93b8354995190b953b23dc4d135176", size = 1131904, upload-time = "2024-12-19T16:04:05.57Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d4/2c/cfd9a786e69b27fbeb036ac6550c65c7caa94ba1422a5ee0f8905e79d0f7/roughpy-0.2.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:5133d7f647dbd8c502cbeb6be45ad42473c384d01b8b0dc2d17a2ad0a5efb2d4", size = 3367997, upload-time = "2024-12-19T16:03:46.984Z" },
+    { url = "https://files.pythonhosted.org/packages/38/b9/cfe247c1c78850020f5a4e6f4336d23945336d5de98cfd759e05f1e4de44/roughpy-0.2.0-cp313-cp313-macosx_11_0_x86_64.whl", hash = "sha256:1baa61020d270a53560c8bb1c1d362b158a0caecb2f2e4a6e4282dde53db46cb", size = 3829867, upload-time = "2024-12-19T16:03:48.84Z" },
+    { url = "https://files.pythonhosted.org/packages/29/1f/8096d2a1c7f23e3eec860ad192dd9fc887f65fa1bb023ea582f40f39118a/roughpy-0.2.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:3b60c2a2073a1ecd59cd4d35342f84540ba314c5290ff15210a9e0da2691ca43", size = 4926363, upload-time = "2024-12-19T16:03:51.979Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/88/9e96cf6252b37d9d82cbe12469e4fbd63c0f2c0ed23a9ef96cfab74b57d2/roughpy-0.2.0-cp313-cp313-win_amd64.whl", hash = "sha256:67e2612b6a88ab92a2e29eedf3ca9acaa683233597a8c93ad5ff5398b9ca7e57", size = 3315928, upload-time = "2024-12-19T16:03:53.655Z" },
 ]
 
 [[package]]

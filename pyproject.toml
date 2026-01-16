@@ -8,8 +8,8 @@ dependencies = [
     "gradio>=5.49.1",
     "numpy>=2.1.0",
     "Pillow>=10.4.0",
+    "roughpy",
     "scikit-image>=0.24.0",
-    "iisignature>=0.24",
     "ruff>=0.14.1,<0.15",
 ]
 
@@ -30,6 +30,3 @@ src = ["controllers", "models", "views"]
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F"]
-
-[tool.uv.extra-build-dependencies]
-iisignature = ["numpy"]

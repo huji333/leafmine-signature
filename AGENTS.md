@@ -24,6 +24,7 @@ Thin orchestration layer focused on the concrete Gradio tabs (skeletonization, p
 - `settings.py` resolves `config.toml`.
 - `data_paths.py` exposes canonical directories plus helpers for listing artifacts and sample IDs.
 - `skeletonization.py` manages mask uploads, config defaults, and preprocessing.
+- `bulk_skeletonization.py` runs batch skeletonization for selected/uploaded masks.
 - `polyline_graph.py` builds/memoizes graphs and emits `.json/.meta.json` files.
 - `polyline_route.py` consumes a `GraphSession` to compute traversal + polyline artifacts.
 - `signature.py` batches log-signature computation into per-run CSVs.
