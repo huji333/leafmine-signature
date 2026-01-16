@@ -52,4 +52,16 @@ def _artifact_names(paths) -> list[str]:
     return [path.name for path in paths]
 
 
-__all__ = ["DataBrowser", "resolve_runtime_paths"]
+def reconcile_selection(choices: list[str], current_selection: list[str] | None) -> list[str]:
+    """Preserve user selection where possible, otherwise select all."""
+
+    if not choices:
+        return []
+    current = current_selection or []
+    value = [item for item in current if item in choices]
+    if not value:
+        value = choices
+    return value
+
+
+__all__ = ["DataBrowser", "resolve_runtime_paths", "reconcile_selection"]

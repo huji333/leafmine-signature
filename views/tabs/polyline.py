@@ -57,7 +57,7 @@ def render(
 
     status_markdown = gr.Markdown("")
     with gr.Row():
-        skeleton_preview = gr.Image(label="Segmented Mask")
+        skeleton_preview = gr.Image(label="Input Preview (segmented or skeleton)")
         pruned_preview = gr.Image(label="Pruned Overlay")
 
     with gr.Accordion("Graph JSON", open=False):
