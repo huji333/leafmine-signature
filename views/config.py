@@ -20,6 +20,22 @@ class DataBrowser:
     def polylines(self) -> list[str]:
         return self.config.polyline_names()
 
+    def logsignatures(self) -> list[str]:
+        return _artifact_names(
+            fetch_artifact_paths(
+                self.config.signatures_dir,
+                "*.csv",
+            )
+        )
+
+    def annotations(self) -> list[str]:
+        return _artifact_names(
+            fetch_artifact_paths(
+                self.config.annotations_dir,
+                "*.csv",
+            )
+        )
+
 
 def resolve_runtime_paths(
     data_paths: DataPaths | None = None,

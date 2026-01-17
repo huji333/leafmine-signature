@@ -6,7 +6,7 @@ import gradio as gr
 
 from controllers.data_paths import DataPaths
 from views.config import DataBrowser
-from views.tabs import polyline, signature, skeletonization
+from views.tabs import polyline, signature, skeletonization, umap
 
 
 def main() -> None:
@@ -21,6 +21,8 @@ def main() -> None:
                 polyline.render(data_paths=paths, data_browser=data_browser)
             with gr.Tab("3. Signatures"):
                 signature.render(data_paths=paths, data_browser=data_browser)
+            with gr.Tab("4. UMAP"):
+                umap.render(data_paths=paths, data_browser=data_browser)
 
     demo.launch(
         server_name=os.getenv("GRADIO_SERVER_NAME", "0.0.0.0"),

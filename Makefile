@@ -10,8 +10,8 @@ DEFAULT_PLATFORM :=
 DEFAULT_BUILD_CMD := docker build
 
 ifneq ($(filter arm64 aarch64,$(HOST_ARCH)),)
-  DEFAULT_PLATFORM := linux/amd64
-  DEFAULT_BUILD_CMD := docker buildx build --load
+  DEFAULT_PLATFORM := linux/arm64
+  DEFAULT_BUILD_CMD := docker build
 endif
 
 BUILD_PLATFORM ?= $(DEFAULT_PLATFORM)

@@ -4,7 +4,7 @@ Asset pipeline for calculating log signatures of curvilinear leaf mines.
 
 ## Launch the Management UI
 
-1. `make setup` – builds the image. Apple silicon/ARM64 hosts automatically force `docker buildx build --load --platform linux/amd64`; override with `BUILD_PLATFORM=` or `BUILD_PLATFORM=linux/arm64` plus `BUILD_CMD="docker build"` if you want something else.
+1. `make setup` – builds the image. Apple silicon/ARM64 hosts now default to native `linux/arm64` with `docker build` (no emulation). Override with `BUILD_PLATFORM=` or `BUILD_PLATFORM=linux/amd64` plus `BUILD_CMD="docker buildx build --load"` if you want something else.
 2. `make run` – brings up Gradio on http://localhost:7860. The default `RUN_PLATFORM` matches the image; set `RUN_PLATFORM=` (or another value) only when you intentionally built for a different architecture.
 3. Need a different data mount? `DATA_DIR=/abs/path make run`.
 
