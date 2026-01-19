@@ -15,6 +15,8 @@ def render_graph_overlay(
     graph: SkeletonGraph,
     base_image: Image.Image,
     *,
+    draw_edges: bool = True,
+    offset: tuple[int, int] = (0, 0),
     edge_color: tuple[int, int, int] = DEFAULT_HIGHLIGHT,
     node_color: tuple[int, int, int] = DEFAULT_HIGHLIGHT,
     node_radius: int = 2,
@@ -39,12 +41,21 @@ def render_graph_overlay(
     overlay = base_image.copy()
     draw = ImageDraw.Draw(overlay)
 
-    for edge in graph.edges.values():
-        start = graph.nodes.get(edge.u)
-        end = graph.nodes.get(edge.v)
-        if not start or not end:
-            continue
-        draw.line([(start.x, start.y), (end.x, end.y)], fill=edge_color, width=edge_width)
+    offset_x, offset_y = offset
+    if draw_edges and edge_width > 0:
+        for edge in graph.edges.values():
+            start = graph.nodes.get(edge.u)
+            end = graph.nodes.get(edge.v)
+            if not start or not end:
+                continue
+            draw.line(
+                [
+                    (start.x - offset_x, start.y - offset_y),
+                    (end.x - offset_x, end.y - offset_y),
+                ],
+                fill=edge_color,
+                width=edge_width,
+            )
 
     base_font = None
     leaf_font = None
@@ -80,9 +91,11 @@ def render_graph_overlay(
             elif junction_ids and node.id in junction_ids:
                 color = junction_color or node_color
                 radius = max(node_radius, (junction_radius or node_radius))
+            x = node.x - offset_x
+            y = node.y - offset_y
             bbox = [
-                (node.x - radius, node.y - radius),
-                (node.x + radius, node.y + radius),
+                (x - radius, y - radius),
+                (x + radius, y + radius),
             ]
             if radius > 0:
                 draw.ellipse(bbox, fill=color)
@@ -95,7 +108,7 @@ def render_graph_overlay(
                     label_font = leaf_font
                 elif junction_ids and node.id in junction_ids and junction_font is not None:
                     label_font = junction_font
-                position = (node.x + radius + 2, node.y - radius - 8)
+                position = (x + radius + 2, y - radius - 8)
                 text_kwargs: dict[str, object] = {
                     "fill": label_color,
                     "font": label_font,
@@ -116,6 +129,8 @@ def render_graph_preview(
     graph: SkeletonGraph,
     skeleton_path: Path,
     *,
+    draw_edges: bool = True,
+    offset: tuple[int, int] = (0, 0),
     edge_color: tuple[int, int, int] = DEFAULT_HIGHLIGHT,
     node_color: tuple[int, int, int] = DEFAULT_HIGHLIGHT,
     node_radius: int = 2,
@@ -142,6 +157,8 @@ def render_graph_preview(
     overlay = render_graph_overlay(
         graph,
         base,
+        draw_edges=draw_edges,
+        offset=offset,
         edge_color=edge_color,
         node_color=node_color,
         node_radius=node_radius,

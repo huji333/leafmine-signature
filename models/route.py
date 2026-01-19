@@ -83,9 +83,9 @@ def compute_route(
     odd_pairs: list[tuple[int, int]] = []
     edge_additions: dict[int, int] = {}
     if target_odds:
-        distances, parents = _all_pairs_shortest(graph, target_odds)
+        distances, parents, parent_edges = _all_pairs_shortest(graph, target_odds)
         odd_pairs = _pair_odd_vertices(sorted(target_odds), distances)
-        edge_additions = _expand_pairs_to_edges(graph, odd_pairs, parents)
+        edge_additions = _expand_pairs_to_edges(graph, odd_pairs, parents, parent_edges)
 
     edge_use_counts: dict[int, int] = {edge_id: 1 for edge_id in graph.edges}
     for edge_id, count in edge_additions.items():
@@ -124,37 +124,53 @@ def _component_nodes(graph: SkeletonGraph, root: int) -> set[int]:
     return seen
 
 
+def _iter_adjacent_edges(
+    graph: SkeletonGraph, node_id: int
+) -> Iterable[tuple[int, int]]:
+    for neighbor, edge_ids in graph.adjacency.get(node_id, {}).items():
+        for edge_id in edge_ids:
+            yield neighbor, edge_id
+
+
 def _all_pairs_shortest(
     graph: SkeletonGraph, nodes: Iterable[int]
-) -> tuple[dict[int, dict[int, float]], dict[int, dict[int, int]]]:
+) -> tuple[
+    dict[int, dict[int, float]],
+    dict[int, dict[int, int]],
+    dict[int, dict[int, int]],
+]:
     distances: dict[int, dict[int, float]] = {}
     parents: dict[int, dict[int, int]] = {}
+    parent_edges: dict[int, dict[int, int]] = {}
     for node in nodes:
-        dist, prev = _dijkstra(graph, node)
+        dist, prev, prev_edge = _dijkstra(graph, node)
         distances[node] = dist
         parents[node] = prev
-    return distances, parents
+        parent_edges[node] = prev_edge
+    return distances, parents, parent_edges
 
 
 def _dijkstra(
     graph: SkeletonGraph, source: int
-) -> tuple[dict[int, float], dict[int, int]]:
+) -> tuple[dict[int, float], dict[int, int], dict[int, int]]:
     dist = {node_id: math.inf for node_id in graph.nodes}
     prev: dict[int, int] = {}
+    prev_edge: dict[int, int] = {}
     dist[source] = 0.0
     heap: list[tuple[float, int]] = [(0.0, source)]
     while heap:
         current_dist, node = heapq.heappop(heap)
         if current_dist > dist[node]:
             continue
-        for neighbor, edge_id in graph.adjacency.get(node, {}).items():
+        for neighbor, edge_id in _iter_adjacent_edges(graph, node):
             edge = graph.edges[edge_id]
             candidate = current_dist + edge.weight
             if candidate < dist[neighbor]:
                 dist[neighbor] = candidate
                 prev[neighbor] = node
+                prev_edge[neighbor] = edge_id
                 heapq.heappush(heap, (candidate, neighbor))
-    return dist, prev
+    return dist, prev, prev_edge
 
 
 def _pair_odd_vertices(
@@ -233,28 +249,35 @@ def _expand_pairs_to_edges(
     graph: SkeletonGraph,
     pairs: Sequence[tuple[int, int]],
     parents: dict[int, dict[int, int]],
+    parent_edges: dict[int, dict[int, int]],
 ) -> dict[int, int]:
     edge_counts: dict[int, int] = {}
     for a, b in pairs:
-        path = _reconstruct_path(parents[a], a, b)
-        if len(path) < 2:
+        edge_path = _reconstruct_edge_path(parents[a], parent_edges[a], a, b)
+        if not edge_path:
             continue
-        for u, v in zip(path, path[1:]):
-            edge_id = graph.adjacency[u][v]
+        for edge_id in edge_path:
             edge_counts[edge_id] = edge_counts.get(edge_id, 0) + 1
     return edge_counts
 
 
-def _reconstruct_path(prev: dict[int, int], start: int, goal: int) -> list[int]:
+def _reconstruct_edge_path(
+    prev: dict[int, int],
+    prev_edge: dict[int, int],
+    start: int,
+    goal: int,
+) -> list[int]:
     if start == goal:
-        return [start]
-    path = [goal]
-    while path[-1] != start:
-        if path[-1] not in prev:
+        return []
+    edges: list[int] = []
+    current = goal
+    while current != start:
+        if current not in prev or current not in prev_edge:
             raise ValueError("Graph is disconnected; path reconstruction failed.")
-        path.append(prev[path[-1]])
-    path.reverse()
-    return path
+        edges.append(prev_edge[current])
+        current = prev[current]
+    edges.reverse()
+    return edges
 
 
 def _hierholzer_trail(
@@ -267,7 +290,7 @@ def _hierholzer_trail(
     visits: list[RouteEdgeVisit] = []
     while stack:
         node, incoming_edge, incoming_dir = stack[-1]
-        for neighbor, edge_id in graph.adjacency.get(node, {}).items():
+        for neighbor, edge_id in _iter_adjacent_edges(graph, node):
             if local_counts.get(edge_id, 0) <= 0:
                 continue
             local_counts[edge_id] -= 1

@@ -6,7 +6,7 @@ import gradio as gr
 
 from controllers.data_paths import DataPaths
 from views.config import DataBrowser
-from views.tabs import polyline, signature, skeletonization, umap
+from views.tabs import manual_route, polyline, signature, skeletonization, umap
 
 
 def main() -> None:
@@ -19,6 +19,8 @@ def main() -> None:
                 skeletonization.render(data_paths=paths, data_browser=data_browser)
             with gr.Tab("2. Route Builder"):
                 polyline.render(data_paths=paths, data_browser=data_browser)
+            with gr.Tab("2b. Manual Route Builder"):
+                manual_route.render(data_paths=paths, data_browser=data_browser)
             with gr.Tab("3. Signatures"):
                 signature.render(data_paths=paths, data_browser=data_browser)
             with gr.Tab("4. UMAP"):
