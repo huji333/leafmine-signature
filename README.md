@@ -4,7 +4,7 @@ Asset pipeline for calculating log signatures of curvilinear leaf mines.
 
 ## Launch the Management UI
 
-1. `make setup` – builds the image. Apple silicon/ARM64 hosts automatically force `docker buildx build --load --platform linux/amd64`; override with `BUILD_PLATFORM=` or `BUILD_PLATFORM=linux/arm64` plus `BUILD_CMD="docker build"` if you want something else.
+1. `make setup` – builds the image. Defaults to `linux/amd64` via `docker buildx build --load` so roughpy installs from prebuilt wheels instead of source. On Apple silicon, this requires buildx/QEMU. To attempt a native arm64 build, set `BUILD_PLATFORM=` and `BUILD_CMD="docker build"` (roughpy will fall back to a source build, which may require extra system deps).
 2. `make run` – brings up Gradio on http://localhost:7860. The default `RUN_PLATFORM` matches the image; set `RUN_PLATFORM=` (or another value) only when you intentionally built for a different architecture.
 3. Need a different data mount? `DATA_DIR=/abs/path make run`.
 

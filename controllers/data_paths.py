@@ -22,6 +22,8 @@ class DataPaths:
     polyline_dir: Path = Path("data/polylines")
     graph_dir: Path = Path("data/graphs")
     signatures_dir: Path = Path("data/logsig")
+    umap_dir: Path = Path("data/umap")
+    annotations_dir: Path = Path("data")
 
     def ensure_directories(self) -> None:
         """Ensure all directories exist."""
@@ -30,6 +32,8 @@ class DataPaths:
         self.polyline_dir.mkdir(parents=True, exist_ok=True)
         self.graph_dir.mkdir(parents=True, exist_ok=True)
         self.signatures_dir.mkdir(parents=True, exist_ok=True)
+        self.umap_dir.mkdir(parents=True, exist_ok=True)
+        self.annotations_dir.mkdir(parents=True, exist_ok=True)
 
     def ensure_signature_directories(self) -> None:
         """Ensure directories needed for signature computation exist."""
@@ -109,6 +113,8 @@ class DataPaths:
             polyline_dir=base / "polylines",
             graph_dir=base / "graphs",
             signatures_dir=signatures_dir,
+            umap_dir=base / "umap",
+            annotations_dir=base,
         )
 
 
