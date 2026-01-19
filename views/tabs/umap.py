@@ -108,6 +108,7 @@ def render(
         label="UMAP coordinates (preview)",
         interactive=False,
     )
+    umap_csv = gr.File(label="UMAP CSV (download)")
     status_output = gr.Markdown("")
 
     load_inputs = [
@@ -151,7 +152,7 @@ def render(
             max_depth,
             max_samples,
         ],
-        outputs=[umap_plot, umap_table, status_output],
+        outputs=[umap_plot, umap_table, umap_csv, status_output],
         show_progress=True,
     )
 
@@ -206,7 +207,7 @@ def _handle_umap(
     min_samples_leaf: float,
     max_depth: float,
     max_samples: float,
-) -> tuple[object, list[list[object]], str]:
+) -> tuple[object, list[list[object]], str | None, str]:
     if not color_column:
         raise gr.Error("Select a color column first.")
 
@@ -233,7 +234,8 @@ def _handle_umap(
         raise gr.Error(str(exc)) from exc
 
     table_update = gr.update(value=result.table_rows, headers=result.table_headers)
-    return result.figure, table_update, result.status
+    csv_path = str(result.csv_path) if result.csv_path else None
+    return result.figure, table_update, csv_path, result.status
 
 
 def _parse_max_depth(value: float | None) -> int | None:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import Iterable
 
@@ -44,6 +45,7 @@ class UmapResult:
     table_rows: list[list[object]]
     table_headers: list[str]
     status: str
+    csv_path: Path | None = None
 
 
 def list_logsignatures(data_paths: DataPaths) -> list[str]:
@@ -136,7 +138,16 @@ def compute_umap_flow(
     )
 
     figure, color_info = _plot_embedding(embedding, labels, color_column)
+    table_headers = ["sample_key", "label", "umap_x", "umap_y"]
     table_rows = _build_table_rows(keys, labels, embedding)
+    csv_path = _write_umap_csv(
+        output_dir=data_paths.umap_dir,
+        logsig_path=logsig_path,
+        annotation_path=annotation_path,
+        color_column=color_column,
+        headers=table_headers,
+        rows=table_rows,
+    )
 
     status_lines = [
         f"Loaded {len(vectors)} log-signature rows from `{logsig_path.name}`.",
@@ -148,12 +159,15 @@ def compute_umap_flow(
     status_lines.extend(logs)
     status_lines.extend(ann_logs)
     status_lines.append(color_info)
+    if csv_path is not None:
+        status_lines.append(f"Saved UMAP CSV to `{csv_path.name}`.")
 
     return UmapResult(
         figure=figure,
         table_rows=table_rows,
-        table_headers=["sample_key", "label", "umap_x", "umap_y"],
+        table_headers=table_headers,
         status="\n".join(status_lines),
+        csv_path=csv_path,
     )
 
 
@@ -354,6 +368,37 @@ def _build_table_rows(
     for key, label, coords in zip(keys, labels, embedding):
         rows.append([key, label, float(coords[0]), float(coords[1])])
     return rows
+
+
+def _write_umap_csv(
+    *,
+    output_dir: Path,
+    logsig_path: Path,
+    annotation_path: Path,
+    color_column: str,
+    headers: list[str],
+    rows: list[list[object]],
+) -> Path | None:
+    if not rows:
+        return None
+    output_dir.mkdir(parents=True, exist_ok=True)
+    stamp = datetime.now().strftime("%Y%m%dT%H%M%S")
+    logsig_slug = _safe_slug(logsig_path.stem, "logsig")
+    annotation_slug = _safe_slug(annotation_path.stem, "annotation")
+    color_slug = _safe_slug(color_column, "color")
+    filename = f"umap_{logsig_slug}_{annotation_slug}_{color_slug}_{stamp}.csv"
+    csv_path = output_dir / filename
+    with csv_path.open("w", newline="", encoding="utf-8") as handle:
+        writer = csv.writer(handle)
+        writer.writerow(headers)
+        writer.writerows(rows)
+    return csv_path
+
+
+def _safe_slug(value: str, fallback: str) -> str:
+    cleaned = "".join(char if char.isalnum() or char in "._-" else "_" for char in value.strip())
+    cleaned = cleaned.strip("._-")
+    return cleaned or fallback
 
 
 __all__ = [

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
-from controllers.data_paths import DataPaths
+from controllers.data_paths import DataPaths, fetch_artifact_paths
 
 
 @dataclass(slots=True)
@@ -46,6 +47,10 @@ def resolve_runtime_paths(
     cfg = data_paths or DataPaths.from_data_dir()
     browser = data_browser or DataBrowser(cfg)
     return cfg, browser
+
+
+def _artifact_names(paths: list[Path]) -> list[str]:
+    return [path.name for path in paths]
 
 
 def reconcile_selection(choices: list[str], current_selection: list[str] | None) -> list[str]:

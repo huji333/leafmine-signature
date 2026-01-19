@@ -5,14 +5,8 @@ SEGMENTED_DIR ?= $(DATA_DIR)/segmented
 ANNOTATION_CSV ?= $(DATA_DIR)/sample_annotation.csv
 SEGMENTED_GLOB ?= segmented_*.png
 
-HOST_ARCH := $(shell /usr/bin/uname -m 2>/dev/null)
-DEFAULT_PLATFORM :=
-DEFAULT_BUILD_CMD := docker build
-
-ifneq ($(filter arm64 aarch64,$(HOST_ARCH)),)
-  DEFAULT_PLATFORM := linux/arm64
-  DEFAULT_BUILD_CMD := docker build
-endif
+DEFAULT_PLATFORM := linux/amd64
+DEFAULT_BUILD_CMD := docker buildx build --load
 
 BUILD_PLATFORM ?= $(DEFAULT_PLATFORM)
 RUN_PLATFORM ?= $(DEFAULT_PLATFORM)
